@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html>
+    <head>
+         <meta charset="utf-8" />
+         <title>Straight Road Traffic Sim</title>
+    </head>
+    <body>
+        <canvas id="base" width="800" height="300"></canvas>
+        <script>
+           //setup 
+           const canvas = document.getElementById("base");
+           const ctx = canvas.getContext("2d"); 
+           const roadHeight = 80;
+           const roadY = canvas.height/2;
+           const car = {
+            x: 100,
+            width: 40,
+            height: 20,
+            colour: "#FF00FF"
+            };
+           function drawStage(){
+                //background
+                ctx.fillStyle = "#556B2F"; //green
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                //roadbase
+                ctx.fillStyle = "#3b3b3b";
+                ctx.fillRect(0, roadY-(roadHeight/2), canvas.width, roadHeight);
+                //dash
+                const dashLength = 20;
+                const dashGap = 15;
+                const dashHeight = 6;
+                ctx.fillStyle = "#FFFAF0";
+                for (let x = 0; x < canvas.width; x += (dashLength + dashGap)){
+                    ctx.fillRect(x, roadY - (dashHeight / 2), dashLength, dashHeight);
+                }
+                }
+            function drawCar(){
+                const carY = roadY - (roadHeight/4) - car.height/2;
+                ctx.fillStyle = car.colour;
+                ctx.fillRect(car.x, carY, car.width, car.height);
+            }
+            //timeloop
+            function loop(){
+                const frameMovement = 2;
+                car.x = car.x + frameMovement;
+                if (car.x > canvas.width){
+                    car.x = -car.width;
+                }
+                drawStage();
+                drawCar();
+                requestAnimationFrame(loop);
+            }
+            requestAnimationFrame(loop);
+        </script>
+    </body>
+</html>
