@@ -1,0 +1,762 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <meta charset="utf-8" />
+        <title>MacroSim MicroVisual Eulerian ARZ</title>
+        <style>
+            body {
+                margin: 0;
+                background: #141414;
+                color: #f0f0f0;
+                font-family: Arial, sans-serif;
+                overflow-x: auto;
+            }
+
+            .wrap {
+                display: flex;
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 10px;
+                padding: 16px;
+                width: max-content;
+                min-width: 100%;
+            }
+
+            canvas {
+                border: 1px solid #444;
+            }
+
+            #hud {
+                white-space: pre-wrap;
+                font-size: 14px;
+            }
+        </style>
+    </head>
+    <body>
+        <div class="wrap">
+            <div id="hud"></div>
+            <div style="display:flex;align-items:center;gap:10px;font-size:14px;">
+                <label for="speedSlider">Speed:</label>
+                <input id="speedSlider" type="range" min="0.1" max="20" step="0.1" value="1" style="width:200px;">
+                <span id="speedLabel">1.0x</span>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:6px;font-size:14px;">
+                <div style="display:flex;align-items:center;gap:10px;">
+                    <label for="muSlider">Peak Position (μ):</label>
+                    <input id="muSlider" type="range" min="0" max="2500" step="10" value="1250" style="width:200px;">
+                    <span id="muLabel">1250 m</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:10px;">
+                    <label for="sigmaSlider">Std Dev (σ):</label>
+                    <input id="sigmaSlider" type="range" min="100" max="1000" step="10" value="300" style="width:200px;">
+                    <span id="sigmaLabel">300 m</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:10px;">
+                    <label for="ampSlider">Amplitude (A):</label>
+                    <input id="ampSlider" type="range" min="0.020" max="0.143" step="0.001" value="0.100" style="width:200px;">
+                    <span id="ampLabel">0.100 veh/m</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:10px;">
+                    <label for="vfSlider">Free Flow Speed (V<sub>f</sub>):</label>
+                    <input id="vfSlider" type="range" min="5" max="50" step="1" value="30" style="width:200px;">
+                    <span id="vfLabel">30 m/s</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:10px;">
+                    <label for="rhoMaxSlider">Jam Density (ρ<sub>max</sub>):</label>
+                    <input id="rhoMaxSlider" type="range" min="0.05" max="0.30" step="0.005" value="0.143" style="width:200px;">
+                    <span id="rhoMaxLabel">0.143 veh/m</span>
+                </div>
+                <button id="restartBtn" type="button" style="width:fit-content;">Restart Simulation</button>
+            </div>
+            <canvas id="densityCanvas" width="5000" height="260"></canvas>
+            <canvas id="travelTimeCanvas" width="5000" height="260"></canvas>
+            <canvas id="microCanvas" width="5000" height="260"></canvas>
+            <canvas id="densityLineCanvas" width="5000" height="260"></canvas>
+            <canvas id="travelTimeLineCanvas" width="5000" height="260"></canvas>
+        </div>
+
+        <script>
+            //WORK IN PROGRESS
+            const densityCanvas = document.getElementById("densityCanvas");
+            const densityCtx = densityCanvas.getContext("2d");
+            const travelTimeCanvas = document.getElementById("travelTimeCanvas");
+            const travelTimeCtx = travelTimeCanvas.getContext("2d");
+            const microCanvas = document.getElementById("microCanvas");
+            const microCtx = microCanvas.getContext("2d");
+            const densityLineCanvas = document.getElementById("densityLineCanvas");
+            const densityLineCtx = densityLineCanvas.getContext("2d");
+            const travelTimeLineCanvas = document.getElementById("travelTimeLineCanvas");
+            const travelTimeLineCtx = travelTimeLineCanvas.getContext("2d");
+            const hud = document.getElementById("hud");
+            const speedSlider = document.getElementById("speedSlider");
+            const speedLabel = document.getElementById("speedLabel");
+            speedSlider.addEventListener("input", () => {
+                speedLabel.textContent = parseFloat(speedSlider.value).toFixed(1) + "x";
+            });
+
+            let gaussMu = 1250;
+            let gaussSigma = 300;
+            let gaussAmp = 0.1;
+
+            const muSlider = document.getElementById("muSlider");
+            const muLabel = document.getElementById("muLabel");
+            const sigmaSlider = document.getElementById("sigmaSlider");
+            const sigmaLabel = document.getElementById("sigmaLabel");
+            const ampSlider = document.getElementById("ampSlider");
+            const ampLabel = document.getElementById("ampLabel");
+            const restartBtn = document.getElementById("restartBtn");
+
+            muSlider.addEventListener("input", () => {
+                gaussMu = parseFloat(muSlider.value);
+                muLabel.textContent = gaussMu.toFixed(0) + " m";
+            });
+            sigmaSlider.addEventListener("input", () => {
+                gaussSigma = parseFloat(sigmaSlider.value);
+                sigmaLabel.textContent = gaussSigma.toFixed(0) + " m";
+            });
+            ampSlider.addEventListener("input", () => {
+                gaussAmp = parseFloat(ampSlider.value);
+                ampLabel.textContent = gaussAmp.toFixed(3) + " veh/m";
+            });
+
+            const vfSlider = document.getElementById("vfSlider");
+            const vfLabel = document.getElementById("vfLabel");
+            const rhoMaxSlider = document.getElementById("rhoMaxSlider");
+            const rhoMaxLabel = document.getElementById("rhoMaxLabel");
+
+            vfSlider.addEventListener("input", () => {
+                VF = parseFloat(vfSlider.value);
+                vfLabel.textContent = VF.toFixed(0) + " m/s";
+            });
+            rhoMaxSlider.addEventListener("input", () => {
+                RHO_MAX = parseFloat(rhoMaxSlider.value);
+                rhoMaxLabel.textContent = RHO_MAX.toFixed(3) + " veh/m";
+            });
+
+            // ---------- Geometry ----------
+            const L = 2500;
+            const PX_PER_M = 2;
+            const ROAD_WIDTH_PX = L * PX_PER_M;
+            const LANE_HEIGHT_PX = 32;
+            const STRIPE_HEIGHT_PX = 6;
+            const ROAD_Y_TOP = 52;
+            const ROAD_Y_BOT = ROAD_Y_TOP + LANE_HEIGHT_PX + STRIPE_HEIGHT_PX;
+            const MICRO_ROAD_SURFACE_COLOR = "#6f6d67";
+            const CAR_RENDER_PX_PER_M = 5;
+            const CAR_LENGTH_M = 4;
+            const CAR_WIDTH_M = 4;
+            const CAR_LENGTH_PX = CAR_LENGTH_M * CAR_RENDER_PX_PER_M;
+            const CAR_WIDTH_PX = CAR_WIDTH_M * CAR_RENDER_PX_PER_M;
+            const carIcon = new Image();
+            carIcon.decoding = "async";
+            carIcon.src = "assets/cartopview.png";
+
+            // ---------- ARZ Parameters ----------
+            const Tmax = 120;
+            const Nx = 500;
+            const N_RING = 2 * Nx;  // ring: top [0,Nx) + bottom [Nx,2Nx)
+            const dx = L / Nx;
+            let VF = 30;
+            let RHO_MAX = 1 / 7;
+            const TAU = 20;
+            const GAMMA = 1;
+            const CFL = 0.4;
+            const RHO_FLOOR = 0.001;
+            const DENSITY_COLOR_MAX = 0.15;
+            const TRAVEL_TIME_COLOR_MAX = 600;
+            const TRAVEL_TIME_SPEED_FLOOR = 0.1;
+            const x = Array.from({ length: N_RING }, (_, i) => (i + 0.5) * dx);
+
+            function clamp(value, min, max) {
+                return Math.min(max, Math.max(min, value));
+            }
+
+            function drawCarSprite(ctx, xPx, yPx, facingRight) {
+                if (!carIcon.complete || carIcon.naturalWidth === 0) {
+                    ctx.fillStyle = "#1f1f1f";
+                    ctx.fillRect(xPx, yPx, CAR_LENGTH_PX, CAR_WIDTH_PX);
+                    return;
+                }
+
+                ctx.save();
+                ctx.translate(xPx + CAR_LENGTH_PX / 2, yPx + CAR_WIDTH_PX / 2);
+                ctx.rotate(facingRight ? Math.PI / 2 : -Math.PI / 2);
+                ctx.drawImage(carIcon, -CAR_WIDTH_PX / 2, -CAR_LENGTH_PX / 2, CAR_WIDTH_PX, CAR_LENGTH_PX);
+                ctx.restore();
+            }
+
+            function pressure(rhoValue) {
+                const rhoSafe = Math.max(rhoValue, RHO_FLOOR);
+                return VF * Math.pow(rhoSafe / RHO_MAX, GAMMA);
+            }
+
+            function equilibriumVelocity(rhoValue) {
+                const rhoClamped = Math.max(rhoValue, 0);
+                return VF * Math.pow(Math.max(0, 1 - rhoClamped / RHO_MAX), GAMMA);
+            }
+
+            function initialDensityProfile(xMeters) {
+                return Math.max(gaussAmp * Math.exp(-0.5 * ((xMeters - gaussMu) / gaussSigma) ** 2), 0.001);
+            }
+
+            function velocityFromState(rhoValue, yValue) {
+                const rhoSafe = Math.max(rhoValue, RHO_FLOOR);
+                return yValue / rhoSafe - pressure(rhoSafe);
+            }
+
+            function fluxFromState(rhoValue, yValue) {
+                const vValue = velocityFromState(rhoValue, yValue);
+                return {
+                    rho: rhoValue * vValue,
+                    y: yValue * vValue
+                };
+            }
+
+            function densityColor(rhoValue) {
+                const ratio = clamp(rhoValue / DENSITY_COLOR_MAX, 0, 1);
+                const rCol = Math.round(35 + 220 * ratio);
+                const gCol = Math.round(55 + 120 * (1 - ratio));
+                const bCol = Math.round(210 - 160 * ratio);
+                return `rgb(${rCol}, ${gCol}, ${bCol})`;
+            }
+
+            function travelTimeColor(travelTimeValue) {
+                const ratio = clamp(travelTimeValue / TRAVEL_TIME_COLOR_MAX, 0, 1);
+                const rCol = Math.round(220 - 150 * ratio);
+                const gCol = Math.round(70 + 15 * (1 - ratio));
+                const bCol = Math.round(70 + 150 * ratio);
+                return `rgb(${rCol}, ${gCol}, ${bCol})`;
+            }
+
+            function drawDashedCenterStripe(ctx, yTop, width, stripeHeight, baseColor = "#ffffff") {
+                const dashLength = stripeHeight * 6;
+                const gapLength = stripeHeight * 4;
+                ctx.save();
+                ctx.fillStyle = baseColor;
+                ctx.fillRect(0, yTop, width, stripeHeight);
+                ctx.fillStyle = "#f0c000";
+                for (let x = 0; x < width; x += dashLength + gapLength) {
+                    ctx.fillRect(x, yTop, Math.min(dashLength, width - x), stripeHeight);
+                }
+                ctx.restore();
+            }
+
+            function drawRoadFrame(ctx, canvas, title, laneColor = "#ffffff") {
+                ctx.fillStyle = "#1f3a1d";
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                ctx.fillStyle = laneColor;
+                ctx.fillRect(0, ROAD_Y_TOP - LANE_HEIGHT_PX / 2, ROAD_WIDTH_PX, LANE_HEIGHT_PX);
+                drawDashedCenterStripe(ctx, ROAD_Y_TOP + LANE_HEIGHT_PX / 2, ROAD_WIDTH_PX, STRIPE_HEIGHT_PX, laneColor);
+                ctx.fillStyle = laneColor;
+                ctx.fillRect(0, ROAD_Y_BOT - LANE_HEIGHT_PX / 2, ROAD_WIDTH_PX, LANE_HEIGHT_PX);
+                const roadTop = ROAD_Y_TOP - LANE_HEIGHT_PX / 2;
+                ctx.strokeStyle = "#111111";
+                ctx.lineWidth = 2;
+                ctx.strokeRect(0, roadTop, ROAD_WIDTH_PX, LANE_HEIGHT_PX * 2 + STRIPE_HEIGHT_PX);
+                ctx.fillStyle = "#f0f0f0";
+                ctx.font = "15px Arial";
+                ctx.textAlign = "left";
+                ctx.textBaseline = "top";
+                ctx.fillText(title, 14, 8);
+            }
+
+            function drawLegend(ctx, title, leftLabel, rightLabel, leftColor, rightColor) {
+                const legendX = 30;
+                const legendY = ROAD_Y_BOT + LANE_HEIGHT_PX / 2 + 22;
+                const legendW = 320;
+                const legendH = 18;
+                const grad = ctx.createLinearGradient(legendX, 0, legendX + legendW, 0);
+                grad.addColorStop(0, leftColor);
+                grad.addColorStop(1, rightColor);
+                ctx.fillStyle = grad;
+                ctx.fillRect(legendX, legendY, legendW, legendH);
+                ctx.strokeStyle = "#f0f0f0";
+                ctx.lineWidth = 1;
+                ctx.strokeRect(legendX, legendY, legendW, legendH);
+
+                ctx.fillStyle = "#f0f0f0";
+                ctx.font = "14px Arial";
+                ctx.textAlign = "left";
+                ctx.textBaseline = "bottom";
+                ctx.fillText(title, legendX, legendY - 6);
+                ctx.textBaseline = "top";
+                ctx.fillText(leftLabel, legendX, legendY + legendH + 4);
+                ctx.textAlign = "right";
+                ctx.fillText(rightLabel, legendX + legendW, legendY + legendH + 4);
+            }
+
+            function drawLinePlot(ctx, canvas, title, yLabel, yMax, rowTop, rowBot) {
+                ctx.fillStyle = "#182016";
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+                const axisL = 72;
+                const plotW = Math.round(ROAD_WIDTH_PX * 0.1);
+                const axisR = axisL + plotW;
+                const axisT = 34;
+                const axisB = canvas.height - 48;
+                const plotH = axisB - axisT;
+
+                ctx.strokeStyle = "#f0f0f0";
+                ctx.lineWidth = 1.5;
+                ctx.beginPath();
+                ctx.moveTo(axisL, axisT);
+                ctx.lineTo(axisL, axisB);
+                ctx.lineTo(axisR, axisB);
+                ctx.stroke();
+
+                ctx.fillStyle = "#f0f0f0";
+                ctx.font = "15px Arial";
+                ctx.textAlign = "left";
+                ctx.textBaseline = "top";
+                ctx.fillText(title, 14, 8);
+
+                const toYPx = (value) => {
+                    const alpha = clamp(value / yMax, 0, 1);
+                    return axisB - alpha * plotH;
+                };
+
+                ctx.font = "11px Arial";
+                ctx.strokeStyle = "#c8d1cb";
+                ctx.fillStyle = "#c8d1cb";
+
+                const xTickCount = 10;
+                for (let k = 0; k <= xTickCount; k++) {
+                    const frac = k / xTickCount;
+                    const xPx = axisL + frac * plotW;
+                    const xVal = frac * L;
+                    ctx.beginPath();
+                    ctx.moveTo(xPx, axisB);
+                    ctx.lineTo(xPx, axisB + 6);
+                    ctx.stroke();
+                    ctx.textAlign = "center";
+                    ctx.textBaseline = "top";
+                    ctx.fillText(`${xVal.toFixed(0)}`, xPx, axisB + 8);
+                }
+
+                const yTickCount = 6;
+                for (let k = 0; k <= yTickCount; k++) {
+                    const frac = k / yTickCount;
+                    const yPx = axisB - frac * plotH;
+                    const yVal = frac * yMax;
+                    ctx.beginPath();
+                    ctx.moveTo(axisL - 6, yPx);
+                    ctx.lineTo(axisL, yPx);
+                    ctx.stroke();
+                    ctx.textAlign = "right";
+                    ctx.textBaseline = "middle";
+                    ctx.fillText(yVal.toFixed(2), axisL - 10, yPx);
+                }
+
+                ctx.fillStyle = "#f0f0f0";
+                ctx.font = "12px Arial";
+                ctx.textAlign = "center";
+                ctx.textBaseline = "top";
+                ctx.fillText("x (m)", axisL + plotW / 2, axisB + 24);
+
+                ctx.save();
+                ctx.translate(22, axisT + plotH / 2);
+                ctx.rotate(-Math.PI / 2);
+                ctx.textAlign = "center";
+                ctx.textBaseline = "top";
+                ctx.fillText(yLabel, 0, 0);
+                ctx.restore();
+
+                // Top lane
+                ctx.strokeStyle = "#4ec3ff";
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                for (let i = 0; i < Nx; i++) {
+                    const xPx = axisL + (i / Math.max(Nx - 1, 1)) * plotW;
+                    if (i === 0) ctx.moveTo(xPx, toYPx(rowTop[i]));
+                    else ctx.lineTo(xPx, toYPx(rowTop[i]));
+                }
+                ctx.stroke();
+                // Bottom lane (k=Nx-1-i → physical x=i*dx)
+                ctx.strokeStyle = "#ff9f59";
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                for (let i = 0; i < Nx; i++) {
+                    const k = Nx - 1 - i;
+                    const xPx = axisL + (i / Math.max(Nx - 1, 1)) * plotW;
+                    if (i === 0) ctx.moveTo(xPx, toYPx(rowBot[k]));
+                    else ctx.lineTo(xPx, toYPx(rowBot[k]));
+                }
+                ctx.stroke();
+                ctx.font = "11px Arial";
+                ctx.fillStyle = "#4ec3ff"; ctx.textAlign = "left"; ctx.textBaseline = "top";
+                ctx.fillText("\u25ac top lane", axisL + plotW + 8, axisT);
+                ctx.fillStyle = "#ff9f59";
+                ctx.fillText("\u25ac bottom lane", axisL + plotW + 8, axisT + 14);
+            }
+
+            function computeTerminalTTTop(vRow) {
+                const ttRow = new Float32Array(Nx);
+                ttRow[Nx - 1] = 0;
+                for (let i = Nx - 2; i >= 0; i--) {
+                    const vSafe = Math.max(vRow[i], TRAVEL_TIME_SPEED_FLOOR);
+                    ttRow[i] = ttRow[i + 1] + dx / vSafe;
+                }
+                return ttRow;
+            }
+            function computeTerminalTTBot(vRow) {
+                // Bottom lane: ring cells [Nx, 2*Nx). T=0 at k=Nx-1 (physical x=0).
+                const ttRow = new Float32Array(Nx);
+                ttRow[Nx - 1] = 0;
+                for (let k = Nx - 2; k >= 0; k--) {
+                    const vSafe = Math.max(vRow[Nx + k], TRAVEL_TIME_SPEED_FLOOR);
+                    ttRow[k] = ttRow[k + 1] + dx / vSafe;
+                }
+                return ttRow;
+            }
+
+            function buildTravelTimeHistory(timeTx, vTx) {
+                const NtStored = timeTx.length - 1;
+                const ttTopTx = Array.from({ length: NtStored + 1 }, () => new Float32Array(Nx));
+                const ttBotTx = Array.from({ length: NtStored + 1 }, () => new Float32Array(Nx));
+
+                ttTopTx[NtStored] = computeTerminalTTTop(vTx[NtStored]);
+                ttBotTx[NtStored] = computeTerminalTTBot(vTx[NtStored]);
+                for (let n = 0; n <= NtStored; n++) {
+                    ttTopTx[n][Nx - 1] = 0;
+                    ttBotTx[n][Nx - 1] = 0;
+                }
+
+                for (let n = NtStored - 1; n >= 0; n--) {
+                    const dt = timeTx[n + 1] - timeTx[n];
+                    const vRow = vTx[n];
+
+                    ttTopTx[n][Nx - 1] = 0;
+                    for (let i = Nx - 2; i >= 0; i--) {
+                        const vSafe = Math.max(vRow[i], TRAVEL_TIME_SPEED_FLOOR);
+                        ttTopTx[n][i] = ttTopTx[n+1][i] + dt * (1 + vSafe * (ttTopTx[n+1][i+1] - ttTopTx[n+1][i]) / dx);
+                    }
+
+                    ttBotTx[n][Nx - 1] = 0;
+                    for (let k = Nx - 2; k >= 0; k--) {
+                        const vSafe = Math.max(vRow[Nx + k], TRAVEL_TIME_SPEED_FLOOR);
+                        ttBotTx[n][k] = ttBotTx[n+1][k] + dt * (1 + vSafe * (ttBotTx[n+1][k+1] - ttBotTx[n+1][k]) / dx);
+                    }
+                }
+
+                return { ttTopTx, ttBotTx };
+            }
+
+            function simulateArz() {
+                let rho = new Float32Array(N_RING);
+                let y = new Float32Array(N_RING);
+
+                for (let i = 0; i < N_RING; i++) {
+                    // Use same sin profile; bottom half (i>=Nx) uses mirror index
+                    const xi = i < Nx ? x[i] : x[N_RING - 1 - i];
+                    const rhoInit = initialDensityProfile(xi);
+                    const vInit = equilibriumVelocity(rhoInit);
+                    const pInit = pressure(rhoInit);
+                    rho[i] = rhoInit;
+                    y[i] = rhoInit * (vInit + pInit);
+                }
+
+                const timeTx = [0];
+                const dtTx = [0];
+                const rhoTx = [rho.slice()];
+                const yTx = [y.slice()];
+                const initialV = new Float32Array(N_RING);
+                for (let i = 0; i < N_RING; i++) {
+                    initialV[i] = velocityFromState(rho[i], y[i]);
+                }
+                const vTx = [initialV];
+
+                let currentTime = 0;
+                let stepCount = 0;
+
+                while (currentTime < Tmax - 1e-9 && stepCount < 100000) {
+                    const p = new Float32Array(N_RING);
+                    const v = new Float32Array(N_RING);
+
+                    let aMax = 0;
+                    for (let i = 0; i < N_RING; i++) {
+                        const rhoSafe = Math.max(rho[i], RHO_FLOOR);
+                        p[i] = pressure(rhoSafe);
+                        v[i] = velocityFromState(rhoSafe, y[i]);
+
+                        const lam1 = v[i];
+                        const lam2 = v[i] - GAMMA * p[i];
+                        aMax = Math.max(aMax, Math.abs(lam1), Math.abs(lam2));
+                    }
+
+                    const dt = Math.min(Tmax - currentTime, CFL * dx / Math.max(aMax, 1e-6));
+                    const fluxRho = new Float32Array(N_RING);
+                    const fluxY = new Float32Array(N_RING);
+
+                    for (let i = 0; i < N_RING; i++) {
+                        const iRight = (i + 1) % N_RING;
+                        const fluxLeft = fluxFromState(rho[i], y[i]);
+                        const fluxRight = fluxFromState(rho[iRight], y[iRight]);
+                        const aInterface = Math.max(
+                            Math.abs(v[i]),
+                            Math.abs(v[i] - GAMMA * p[i]),
+                            Math.abs(v[iRight]),
+                            Math.abs(v[iRight] - GAMMA * p[iRight])
+                        );
+
+                        // Standard Rusanov flux for the periodic interface i + 1/2.
+                        fluxRho[i] =
+                            0.5 * (fluxLeft.rho + fluxRight.rho) -
+                            0.5 * aInterface * (rho[iRight] - rho[i]);
+                        fluxY[i] =
+                            0.5 * (fluxLeft.y + fluxRight.y) -
+                            0.5 * aInterface * (y[iRight] - y[i]);
+                    }
+
+                    const rhoNew = new Float32Array(N_RING);
+                    const yStar = new Float32Array(N_RING);
+
+                    for (let i = 0; i < N_RING; i++) {
+                        const iLeftInterface = (i - 1 + N_RING) % N_RING;
+                        rhoNew[i] = Math.max(
+                            rho[i] - (dt / dx) * (fluxRho[i] - fluxRho[iLeftInterface]),
+                            RHO_FLOOR
+                        );
+                        yStar[i] = y[i] - (dt / dx) * (fluxY[i] - fluxY[iLeftInterface]);
+                    }
+
+                    const yNew = new Float32Array(N_RING);
+                    for (let i = 0; i < N_RING; i++) {
+                        const rhoSafe = Math.max(rhoNew[i], RHO_FLOOR);
+                        const vStar = velocityFromState(rhoSafe, yStar[i]);
+                        const mEqNew = equilibriumVelocity(rhoSafe);
+                        yNew[i] = yStar[i] + dt * rhoSafe * (mEqNew - vStar) / TAU;
+                    }
+
+                    rho = rhoNew;
+                    y = yNew;
+                    currentTime += dt;
+                    stepCount += 1;
+
+                    const vNew = new Float32Array(N_RING);
+                    for (let i = 0; i < N_RING; i++) {
+                        vNew[i] = velocityFromState(rho[i], y[i]);
+                    }
+
+                    timeTx.push(currentTime);
+                    dtTx.push(dt);
+                    rhoTx.push(rho.slice());
+                    yTx.push(y.slice());
+                    vTx.push(vNew);
+                }
+
+                const { ttTopTx, ttBotTx } = buildTravelTimeHistory(timeTx, vTx);
+
+                return {
+                    timeTx,
+                    dtTx,
+                    rhoTx,
+                    yTx,
+                    vTx,
+                    ttTopTx,
+                    ttBotTx
+                };
+            }
+
+            let simulation = simulateArz();
+
+            // sRing: ring position in metres [0, 2*L)
+            function interpolateMacroSpeed(frameIndex, sRing) {
+                const field = simulation.vTx[frameIndex];
+                const cellFloat = clamp(sRing / dx, 0, N_RING - 1);
+                const i0 = clamp(Math.floor(cellFloat), 0, N_RING - 2);
+                const alpha = cellFloat - i0;
+                return field[i0] * (1 - alpha) + field[i0 + 1] * alpha;
+            }
+
+            function buildInitialMicroCars() {
+                const cars = [];
+                const rho0 = simulation.rhoTx[0];
+                let cumulativeCars = 0;
+                let emittedCars = 0;
+
+                for (let i = 0; i < N_RING; i++) {
+                    cumulativeCars += Math.max(rho0[i], 0) * dx;
+                    while (emittedCars + 0.5 <= cumulativeCars) {
+                        cars.push({ s: clamp(i * dx, 0, 2 * L - CAR_LENGTH_M) });
+                        emittedCars += 1;
+                    }
+                }
+                return cars;
+            }
+
+            function filterPeriodicCars(cars) {
+                if (cars.length <= 1) return cars;
+                cars.sort((a, b) => a.s - b.s);
+
+                const filteredCars = [];
+                for (const car of cars) {
+                    const prev = filteredCars[filteredCars.length - 1];
+                    if (!prev || car.s - prev.s >= CAR_LENGTH_M) {
+                        filteredCars.push(car);
+                    }
+                }
+
+                while (
+                    filteredCars.length > 1 &&
+                    filteredCars[0].s + 2 * L - filteredCars[filteredCars.length - 1].s < CAR_LENGTH_M
+                ) {
+                    filteredCars.pop();
+                }
+
+                return filteredCars;
+            }
+
+            function buildMicroCarsByFrame() {
+                const frameCount = simulation.timeTx.length;
+                const frames = Array.from({ length: frameCount }, () => []);
+                let activeCars = buildInitialMicroCars();
+
+                for (let n = 0; n < frameCount; n++) {
+                    frames[n] = activeCars.map((car) => ({ s: car.s }));
+                    if (n === frameCount - 1) break;
+
+                    const dtLocal = simulation.timeTx[n + 1] - simulation.timeTx[n];
+                    const nextCars = [];
+
+                    for (const car of activeCars) {
+                        const macroSpeed = Math.max(interpolateMacroSpeed(n, car.s), 0);
+                        nextCars.push({
+                            s: ((car.s + macroSpeed * dtLocal) % (2 * L) + 2 * L) % (2 * L)
+                        });
+                    }
+
+                    activeCars = filterPeriodicCars(nextCars);
+                }
+
+                return frames;
+            }
+
+            let microCarsByFrame = buildMicroCarsByFrame();
+
+            function connectedTopTravelTime(ttTopRow, ttBotRow, i) {
+                const topToBottomOffset = Math.max(ttBotRow[0] - ttTopRow[Nx - 1], 0);
+                return ttTopRow[i] + topToBottomOffset;
+            }
+
+            function render(frameIndex) {
+                const rhoRow = simulation.rhoTx[frameIndex];
+                const vRow = simulation.vTx[frameIndex];
+                const ttTopRow = simulation.ttTopTx[frameIndex];
+                const ttBotRow = simulation.ttBotTx[frameIndex];
+
+                const cellWidthPx = ROAD_WIDTH_PX / Nx;
+                const topY = ROAD_Y_TOP - LANE_HEIGHT_PX / 2;
+                const botY = ROAD_Y_BOT - LANE_HEIGHT_PX / 2;
+
+                // Density
+                drawRoadFrame(densityCtx, densityCanvas, "ARZ Density \u03c1(t,x)  [top \u2192, bottom \u2190]", MICRO_ROAD_SURFACE_COLOR);
+                for (let i = 0; i < Nx; i++) {
+                    densityCtx.fillStyle = densityColor(rhoRow[i]);
+                    densityCtx.fillRect(i * cellWidthPx, topY, cellWidthPx + 1, LANE_HEIGHT_PX);
+                    const k = Nx - 1 - i;
+                    densityCtx.fillStyle = densityColor(rhoRow[Nx + k]);
+                    densityCtx.fillRect(i * cellWidthPx, botY, cellWidthPx + 1, LANE_HEIGHT_PX);
+                }
+                drawLegend(densityCtx, "Density scale", "0.00 veh/m", `${DENSITY_COLOR_MAX.toFixed(2)} veh/m`,
+                    densityColor(0), densityColor(DENSITY_COLOR_MAX));
+
+                // Travel time
+                drawRoadFrame(travelTimeCtx, travelTimeCanvas, "Travel Time Tt(t,x)", MICRO_ROAD_SURFACE_COLOR);
+                for (let i = 0; i < Nx; i++) {
+                    travelTimeCtx.fillStyle = travelTimeColor(connectedTopTravelTime(ttTopRow, ttBotRow, i));
+                    travelTimeCtx.fillRect(i * cellWidthPx, topY, cellWidthPx + 1, LANE_HEIGHT_PX);
+                    const k = Nx - 1 - i;
+                    travelTimeCtx.fillStyle = travelTimeColor(ttBotRow[k]);
+                    travelTimeCtx.fillRect(i * cellWidthPx, botY, cellWidthPx + 1, LANE_HEIGHT_PX);
+                }
+                drawLegend(travelTimeCtx, "Travel-time scale", "0 s", `${TRAVEL_TIME_COLOR_MAX.toFixed(0)} s`,
+                    travelTimeColor(0), travelTimeColor(TRAVEL_TIME_COLOR_MAX));
+
+                // Micro
+                drawRoadFrame(microCtx, microCanvas, "Micro visualisation from ARZ field", MICRO_ROAD_SURFACE_COLOR);
+                const topCarY = ROAD_Y_TOP - CAR_WIDTH_PX / 2;
+                const botCarY = ROAD_Y_BOT - CAR_WIDTH_PX / 2;
+                for (const car of microCarsByFrame[frameIndex]) {
+                    if (car.s < L) {
+                        drawCarSprite(microCtx, car.s * PX_PER_M, topCarY, true);
+                    } else {
+                        drawCarSprite(microCtx, (2 * L - car.s) * PX_PER_M, botCarY, false);
+                    }
+                }
+
+                drawLinePlot(densityLineCtx, densityLineCanvas, "Density vs Position", "density (veh/m)",
+                    DENSITY_COLOR_MAX,
+                    rhoRow.slice(0, Nx),
+                    Array.from({length: Nx}, (_, k) => rhoRow[Nx + k]));
+                drawLinePlot(travelTimeLineCtx, travelTimeLineCanvas, "Travel Time vs Position", "travel time (s)",
+                    TRAVEL_TIME_COLOR_MAX,
+                    Array.from({ length: Nx }, (_, i) => connectedTopTravelTime(ttTopRow, ttBotRow, i)),
+                    ttBotRow);
+
+                let rhoMin = Infinity;
+                let rhoMax = -Infinity;
+                let vMin = Infinity;
+                let vMax = -Infinity;
+                let ttMin = Infinity;
+                let ttMax = -Infinity;
+
+                for (let i = 0; i < Nx; i++) {
+                    const rhoValue = rhoRow[i];
+                    const vValue = vRow[i];
+                    const ttTopValue = connectedTopTravelTime(ttTopRow, ttBotRow, i);
+                    const ttBotValue = ttBotRow[i];
+                    rhoMin = Math.min(rhoMin, rhoValue);
+                    rhoMax = Math.max(rhoMax, rhoValue);
+                    vMin = Math.min(vMin, vValue);
+                    vMax = Math.max(vMax, vValue);
+                    ttMin = Math.min(ttMin, ttTopValue, ttBotValue);
+                    ttMax = Math.max(ttMax, ttTopValue, ttBotValue);
+                }
+
+                hud.textContent =
+                    `t = ${simulation.timeTx[frameIndex].toFixed(2)} s / ${Tmax} s | ` +
+                    `steps stored = ${simulation.timeTx.length - 1} | ` +
+                    `dt(current) = ${simulation.dtTx[frameIndex].toFixed(4)} s | ` +
+                    `dx = ${dx.toFixed(2)} m | Nx = ${Nx} | wraparound = on\n` +
+                    `v_f = ${VF} m/s | rho_max = ${RHO_MAX.toFixed(4)} veh/m | tau = ${TAU} s | gamma = ${GAMMA} | CFL = ${CFL} | rho_floor = ${RHO_FLOOR}\n` +
+                    `initial rho(x) = ${gaussAmp.toFixed(3)} * exp(-((x-${gaussMu.toFixed(0)})/${gaussSigma.toFixed(0)})²/2) | initial v(x) = M(rho(x)) | Tt(L,t) = 0\n` +
+                    `rho range = ${rhoMin.toFixed(4)}-${rhoMax.toFixed(4)} veh/m | ` +
+                    `v range = ${vMin.toFixed(3)}-${vMax.toFixed(3)} m/s | ` +
+                    `Tt range = ${ttMin.toFixed(2)}-${ttMax.toFixed(2)} s | micro cars = ${microCarsByFrame[frameIndex].length}`;
+            }
+
+            restartBtn.addEventListener("click", () => {
+                simulation = simulateArz();
+                microCarsByFrame = buildMicroCarsByFrame();
+                displayTime = 0;
+                frameIndex = 0;
+                lastTimestamp = null;
+            });
+
+            let displayTime = 0;
+            let frameIndex = 0;
+            let lastTimestamp = null;
+
+            function loop(timestamp) {
+                if (lastTimestamp === null) lastTimestamp = timestamp;
+                const elapsed = Math.max((timestamp - lastTimestamp) / 1000, 0);
+                lastTimestamp = timestamp;
+
+                if (displayTime < Tmax) {
+                    displayTime = Math.min(displayTime + elapsed * parseFloat(speedSlider.value), Tmax);
+                    while (
+                        frameIndex + 1 < simulation.timeTx.length &&
+                        simulation.timeTx[frameIndex + 1] <= displayTime
+                    ) {
+                        frameIndex += 1;
+                    }
+                }
+
+                render(frameIndex);
+                requestAnimationFrame(loop);
+            }
+
+            requestAnimationFrame(loop);
+        </script>
+    </body>
+</html>

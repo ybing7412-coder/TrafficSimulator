@@ -16,16 +16,19 @@
            const ROAD_LENGTH_M = canvas.width * METERS_PER_PIXEL;
            //Car Class with IDM
            class Car{
-            constructor(x, speed, colour, speedgapwithleader=0, gap=1, acceleration = 0){ //all px/s with conversion scale above 
+            constructor(x, y, speed, colour, speedgapwithleader=0, gap=1, acceleration = 0){ //all px/s with conversion scale above 
                 this.x = x;
+                this.y = y;
                 this.speed = speed;
+                // this.verticalspeed = 0;
                 this.width = 20;
                 this.height = 10;
                 this.colour = colour;
                 this.maxacc = 30;
                 this.comfacc = 15; 
-                this.timeheadway = 1.5; // in seconds (dt)
-                this.desiredvel = 50;
+                this.safeacc = 20;
+                this.timeheadway = 0; // in seconds (dt)
+                this.desiredvel = 200; 
                 this.mingap = 20;
                 this.delta = 4;
                 this.gap = gap;
@@ -44,18 +47,28 @@
                 }
              }
             
-           //list of cars
+           //list of all cars 
            let cars = [
-            new Car(0, 10, "blue"),
-            new Car (80, 20, "red"),
-            new Car (160, 30, "grey"),
-            new Car (240, 40, "orange"),
-            new Car (320, 50, "black"),
-            new Car(400, 60, "pink"),
-            new Car (480, 50, "green"),
-            new Car (560, 40, "yellow"),
-            new Car (640, 30, "white"),
-            new Car(720, 20, "cyan"),
+            new Car(0, roadY-(roadHeight/4), 0, "#ff0000"),
+            //new Car (100, roadY-(roadHeight/4), 100, "#ffa500"),
+            new Car (200, roadY-(roadHeight/4), 0, "#ffff00"),
+            //new Car (300, roadY-(roadHeight/4), 100, "#008000"),
+            new Car (400, roadY-(roadHeight/4), 20, "#00ffff"),
+           // new Car(500, roadY-(roadHeight/4), 100, "#0000ff"),
+            new Car (600, roadY-(roadHeight/4), 0, "#ff00ff"),
+           // new Car (700, roadY-(roadHeight/4), 100, "#800000"),
+            //new Car (700, roadY-(roadHeight/4), 20, "#808000"),
+            //new Car(900, roadY-(roadHeight/4), 100, "#008080"),
+            new Car(100, roadY+(roadHeight/4), 40, "#4b0082"),
+           // new Car (150, roadY+(roadHeight/4), 100, "#2f4f4f"),
+            new Car (300, roadY+(roadHeight/4), 0, "#b22222"),
+          // new Car (350, roadY+(roadHeight/4), 100, "#8a2be2"),
+            /*new Car (320, roadY+(roadHeight/4), 100, "#ff1493"),
+            new Car(400, roadY+(roadHeight/4), 100, "#20b2aa"),
+            new Car (480, roadY+(roadHeight/4), 100, "#ffd700"),
+            new Car (560, roadY+(roadHeight/4), 100, "#00ff7f"),
+            new Car (640, roadY+(roadHeight/4), 100, "#1e90ff"),
+            new Car(720, roadY+(roadHeight/4), 100, "#708090"),*/
            ];
            //drawing canvas
            function drawStage(){
@@ -72,24 +85,37 @@
                 ctx.fillStyle = "#FFFAF0";
                 for (let x = 0; x < canvas.width; x += (dashLength + dashGap)){
                     ctx.fillRect(x, roadY - (dashHeight / 2), dashLength, dashHeight);
+                };
+                };
+           //draw function for car
+           function drawCar(car){
+                ctx.fillStyle = car.colour;
+                ctx.fillRect(car.x, car.y, car.width, car.height);
+            };
+
+            function wrapGap(leader, follower){
+                if (!leader || !follower) {
+                    return canvas.width - follower.width;
                 }
-                }
-            //draw function for top lane
-            function drawCarL1(Car){
-                const carY = roadY - (roadHeight/4) - Car.height/2;
-                ctx.fillStyle = Car.colour;
-                ctx.fillRect(Car.x, carY, Car.width, Car.height);
+                let gap = leader.x - follower.x - follower.width;
+                if (gap < 0) gap += canvas.width;
+                return Math.max(gap, 0.1);
             }
-            //draw function for bottom lane
-            /*function drawCarL2(Car){
-                const carY = roadY + (roadHeight/4) - Car.height/2;
-                ctx.fillStyle = Car.colour;
-                ctx.fillRect(Car.x + 50, carY, Car.width, Car.height);
-            }*/
-            //get leader index
-            function getLeaderIndex(c) {
-                return (cars.indexOf(c)+1)%cars.length;
-                }
+
+            function idmAcceleration(car, leader){
+                const relSpeed = leader ? car.speed - leader.speed : 0;
+                const desiredGap = car.mingap + car.speed * car.timeheadway +
+                    (car.speed * relSpeed) / (2 * Math.sqrt(car.maxacc * car.comfacc));
+                const gap = wrapGap(leader, car);
+                const raw = car.maxacc * (1 - Math.pow(car.speed / car.desiredvel, car.delta) - Math.pow(desiredGap / gap, 2));
+                return Math.max(-car.maxacc, Math.min(raw, car.maxacc));
+            }
+            
+            //time duration calculator
+            function tripDuration(car){
+                
+            }
+            
             //time loop
             let lastTime = null;
             function loop(timestamp){
@@ -101,26 +127,91 @@
                     }
                 const time = (timestamp - lastTime) / 1000;
                 lastTime = timestamp;
+                // rebuild lane memberships each frame
                 cars.sort((a,b)=> a.x-b.x); 
-                const snapshot = cars.map(car => ({ x: car.x, speed: car.speed }));
+                const groups = [[], []];
                 for (let i = 0; i < cars.length; i++) {
-                    const leaderIdx = (i + 1) % cars.length;
-                    const car = cars[i];
-                    const followerX = snapshot[i].x;
-                    const leader = snapshot[leaderIdx];
-                    const rawGap = (leader.x - followerX - car.width + canvas.width) % canvas.width;
-                    car.gap = Math.max(rawGap, 0.1); // prevent zero/negative gaps
-                    car.speedgapwithleader = leader.speed - snapshot[i].speed;
+                    if (cars[i].y < roadY){
+                        groups[0].push(cars[i]);
+                    } else {
+                        groups[1].push(cars[i]);
+                    };
                 }
 
+                //laneswitching MOBIL model - not working right now
+                /*const politeness = 0.5;
+                const athres = 2;
+                for (let j = 0; j < groups.length; j++){
+                    const lane = groups[j];
+                    lane.sort((a,b)=>a.x-b.x);
+                    for (let i = 0; i < lane.length; i++){
+                        //setup
+                        const car = lane[i];
+                        const nextLaneIdx = (j + 1) % groups.length;
+                        const nextLane = groups[nextLaneIdx];
+    
+                        //finding initial conditions in old lane
+                        const leaderBefore = lane.length > 1 ? lane[(i + 1) % lane.length] : null; //leader element in old lane, added some conditions for if there no cars in new lane but those might not work well
+                        const followerBefore = lane.length > 1 ? lane[(i - 1 + lane.length) % lane.length] : null; //follower element in old lane
+                        const egoBeforeA = idmAcceleration(car, leaderBefore); //initial acceleration
+                        const oldFollowerBeforeA = followerBefore ? idmAcceleration(followerBefore, car) : 0; //intial follower acceleration
+
+                        // finding new index if laneswitch
+                        const insertPos = nextLane.findIndex(c => c.x > car.x);
+                        const carInsertIdx = insertPos === -1 ? nextLane.length : insertPos;
+
+                        //finding initial conditions in new lane
+                        const targetLaneEmpty = nextLane.length === 0;
+                        const nextLeaderBefore = targetLaneEmpty ? null : nextLane[carInsertIdx % nextLane.length]; //leader element in new lane before lane change
+                        const newFollower = targetLaneEmpty ? null : nextLane[(carInsertIdx - 1 + nextLane.length) % nextLane.length]; //follower element in new lane
+                        const newFollowerBeforeA = newFollower ? idmAcceleration(newFollower, nextLeaderBefore) : 0; //initial new lane follower acc 
+                        const nextLeaderAfter = targetLaneEmpty ? null : nextLane[carInsertIdx % nextLane.length]; //leader element in new lane after lane change
+
+                        //finding final accelerations
+                        const egoAfterA = idmAcceleration(car, nextLeaderAfter);
+                        const oldFollowerAfterA = followerBefore ? idmAcceleration(followerBefore, leaderBefore) : 0; 
+                        const newFollowerAfterA = newFollower ? idmAcceleration(newFollower, car) : 0;
+
+                        // the actual lanechange test
+                        const deltaEgo = egoAfterA - egoBeforeA; //self acc change
+                        const deltaOld = oldFollowerAfterA - oldFollowerBeforeA; //old follow acc change
+                        const deltaNew = newFollowerAfterA - newFollowerBeforeA; //new follow acc change
+                        const safe = !newFollower || newFollowerAfterA >= -newFollower.safeacc;
+                        const overlap = newFollower && wrapGap(car, newFollower) <= 0;
+                        const incentive = deltaEgo + politeness * (deltaOld + deltaNew);
+                        if (safe && !overlap && incentive > athres){ //the condition
+                            lane.splice(i, 1);
+                            nextLane.splice(carInsertIdx, 0, car);
+                            i -= 1; //adjusting for the splice
+                            car.y = nextLaneIdx === 0 ? roadY - roadHeight/4 : roadY + roadHeight/4;
+                        }
+                    }*/
+                
+                //the timeloop update - same as before
+                for (let j = 0; j < groups.length; j++){
+                    const lane = groups[j];
+                    lane.sort((a,b)=>a.x-b.x);
+                    const snapshot = lane.map(car => ({ x: car.x, speed: car.speed }));
+                    for (let i = 0; i < lane.length; i++){
+                        const leaderIdx = (i + 1) % lane.length;
+                        const car0 = lane[i];
+                        const followerX = snapshot[i].x;
+                        const leader = snapshot[leaderIdx];
+                        const rawGap = (leader.x - followerX - car0.width + canvas.width) % canvas.width;
+                        //car0.gap = rawGap;
+                        car0.gap = Math.max(rawGap, 0.1); // prevent zero/negative gaps
+                        car0.speedgapwithleader = snapshot[i].speed -leader.speed;
+                     };
+                };
                 for (let idx = 0; idx < cars.length; idx++){ 
                     const c = cars[idx];
                     c.update(time);
                     if (c.x >= canvas.width) {
                         c.x -= canvas.width;
                     }
-                    drawCarL1(c);
-                }
+                    drawCar(c);
+                };
+                
                 requestAnimationFrame(loop);
             }
             requestAnimationFrame(loop);
