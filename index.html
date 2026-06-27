@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>Traffic Simulator</title>
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: "Segoe UI", Arial, sans-serif;
+            background: #0f0f0f;
+            color: #e0e0e0;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        header {
+            padding: 48px 40px 32px;
+            border-bottom: 1px solid #222;
+        }
+
+        header h1 {
+            font-size: 28px;
+            font-weight: 700;
+            color: #f4f4f4;
+            margin-bottom: 6px;
+        }
+
+        header p {
+            font-size: 14px;
+            color: #777;
+            max-width: 600px;
+        }
+
+        main {
+            padding: 36px 40px;
+            flex: 1;
+        }
+
+        h2.section-title {
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+            color: #5db8e8;
+            margin-bottom: 18px;
+        }
+
+        /* ── Simulation cards ─────────────────────────────────────────────── */
+        .card-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 16px;
+            max-width: 1100px;
+            margin-bottom: 48px;
+        }
+
+        .card {
+            display: block;
+            background: #191919;
+            border: 1px solid #2a2a2a;
+            border-radius: 8px;
+            padding: 22px 22px 18px;
+            text-decoration: none;
+            color: inherit;
+            transition: border-color 0.15s, background 0.15s;
+        }
+
+        .card:hover:not(.card-soon) {
+            border-color: #5db8e8;
+            background: #1d2326;
+        }
+
+        .card-soon {
+            opacity: 0.45;
+            cursor: default;
+            pointer-events: none;
+        }
+
+        .card-tag {
+            display: inline-flex;
+            gap: 5px;
+            margin-bottom: 12px;
+        }
+
+        .tag {
+            font-size: 10px;
+            font-weight: 600;
+            letter-spacing: 0.07em;
+            text-transform: uppercase;
+            padding: 2px 7px;
+            border-radius: 3px;
+            background: #252525;
+            color: #888;
+        }
+
+        .tag.macro  { background: #1a2e3a; color: #5db8e8; }
+        .tag.micro  { background: #2a1e3a; color: #b07aff; }
+        .tag.order1 { background: #1e2e20; color: #6dca78; }
+        .tag.order2 { background: #2e2a1a; color: #e0a040; }
+        .tag.soon   { background: #222; color: #555; }
+
+        .card h3 {
+            font-size: 17px;
+            font-weight: 600;
+            color: #f0f0f0;
+            margin-bottom: 6px;
+        }
+
+        .card p {
+            font-size: 13px;
+            color: #888;
+            line-height: 1.55;
+        }
+
+        .card .math {
+            font-family: "Consolas", monospace;
+            font-size: 12px;
+            color: #aaa;
+            margin-top: 10px;
+            padding: 7px 10px;
+            background: #141414;
+            border-radius: 4px;
+            border-left: 3px solid #333;
+        }
+
+        /* ── Footer ───────────────────────────────────────────────────────── */
+        footer {
+            padding: 20px 40px;
+            border-top: 1px solid #1e1e1e;
+            font-size: 12px;
+            color: #444;
+        }
+
+        footer a { color: #5db8e8; text-decoration: none; }
+    </style>
+</head>
+<body>
+
+<header>
+    <h1>Traffic Simulator</h1>
+    <p>Mathematical traffic-flow models — micro and macro — interactive and configurable.
+       Built in the browser with vector graphics and real physical units.</p>
+</header>
+
+<main>
+
+    <h2 class="section-title">Macroscopic Models  —  continuum PDEs</h2>
+
+    <div class="card-grid">
+
+        <!-- LWR -->
+        <a href="sims/lwr/index.html" class="card">
+            <div class="card-tag">
+                <span class="tag macro">Macro</span>
+                <span class="tag order1">1st Order</span>
+            </div>
+            <h3>LWR  —  Kinematic Wave</h3>
+            <p>Lighthill–Whitham–Richards model. Density evolves as a scalar
+               conservation law with Greenshields equilibrium.
+               Includes travel-time heatmap and passive micro-car visualisation.</p>
+            <div class="math">∂ρ/∂t + ∂(ρ·v_e(ρ))/∂x = 0</div>
+        </a>
+
+        <!-- ARZ  — coming soon -->
+        <div class="card card-soon">
+            <div class="card-tag">
+                <span class="tag macro">Macro</span>
+                <span class="tag order2">2nd Order</span>
+                <span class="tag soon">Coming soon</span>
+            </div>
+            <h3>ARZ  —  Aw–Rascle–Zhang</h3>
+            <p>Second-order model with driver anticipation. Avoids the
+               wrong-way traffic instability of Payne–Whitham.
+               Pressure-like term couples density and velocity.</p>
+            <div class="math">∂ρ/∂t + ∂(ρv)/∂x = 0<br>∂y/∂t + ∂(yv)/∂x = ρ(v_e−v)/τ</div>
+        </div>
+
+    </div>
+
+    <h2 class="section-title">Microscopic Models  —  individual vehicles</h2>
+
+    <div class="card-grid">
+
+        <!-- OVM / IDM — coming soon -->
+        <div class="card card-soon">
+            <div class="card-tag">
+                <span class="tag micro">Micro</span>
+                <span class="tag soon">Coming soon</span>
+            </div>
+            <h3>OVM / IDM  —  Car-following</h3>
+            <p>Optimal Velocity Model and Intelligent Driver Model.
+               Individual vehicles react to headway and relative speed.
+               Includes lane-changing via MOBIL criterion.</p>
+            <div class="math">ẍ_n = a·f(x_{n+1}−x_n, ẋ_n, ẋ_{n+1})</div>
+        </div>
+
+    </div>
+
+    <h2 class="section-title">Original Demos  —  archived single-file explorations</h2>
+
+    <div class="card-grid">
+        <a href="Demos/MacrosimMicrovisualEulerianLWR" class="card">
+            <div class="card-tag"><span class="tag">Demo</span></div>
+            <h3>LWR Ring  (original)</h3>
+            <p>The first LWR ring-road demo with micro visualisation and travel-time heatmap.</p>
+        </a>
+        <a href="Demos/MacrosimMicrovisualEulerianARZ" class="card">
+            <div class="card-tag"><span class="tag">Demo</span></div>
+            <h3>ARZ Ring  (original)</h3>
+            <p>Rusanov-scheme ARZ macro sim with micro car tracers.</p>
+        </a>
+        <a href="Demos/MicrosimMacrovisualOVM" class="card">
+            <div class="card-tag"><span class="tag">Demo</span></div>
+            <h3>OVM Micro  (original)</h3>
+            <p>OVM car-following micro sim with TF travel-time and density fields.</p>
+        </a>
+    </div>
+
+</main>
+
+<footer>
+    Traffic Simulator — inspired by
+    <a href="https://github.com/movsim/movsim" target="_blank">MovSim</a>.
+    Run locally with <code>python serve.py</code> or VS Code Live Server.
+</footer>
+
+</body>
+</html>
