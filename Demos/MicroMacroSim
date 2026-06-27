@@ -1,0 +1,2341 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <meta charset="utf-8" />
+        <title>MicroMacroSim</title>
+        <style>
+            body {
+                margin: 0;
+                background: #1a1a1a;
+                color: #f0f0f0;
+                font-family: Arial, sans-serif;
+                overflow-x: auto;
+            }
+            .wrap {
+                display: flex;
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 10px;
+                padding: 16px;
+                width: max-content;
+                min-width: 100%;
+            }
+            canvas {
+                border: 1px solid #444;
+            }
+            #controls {
+                display: flex;
+                align-items: center;
+                gap: 10px;
+                font-size: 14px;
+            }
+        </style>
+    </head>
+    <body>
+        <div class="wrap">
+            <canvas id="base" width="2500" height="420"></canvas>
+            <div id="hud"></div>
+            <div id="edDisplay" style="font-size:15px;font-family:monospace;color:#f0e080;background:#2a2a2a;padding:6px 14px;border:1px solid #666;border-radius:4px;min-width:340px;"></div>
+            <div style="display:flex;align-items:center;gap:10px;font-size:14px;">
+                <label for="speedSlider">Speed:</label>
+                <input id="speedSlider" type="range" min="0.1" max="20" step="0.1" value="1" style="width:200px;">
+                <span id="speedLabel">1.0x</span>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:6px;font-size:14px;">
+                <div style="display:flex;align-items:center;gap:10px;">
+                    <label for="densityModelSelect">Initial density model:</label>
+                    <select id="densityModelSelect" style="font-size:14px;">
+                        <option value="gaussian">Gaussian</option>
+                        <option value="sawtooth">Sawtooth</option>
+                    </select>
+                </div>
+                <div id="gaussianParams" style="display:flex;flex-direction:column;gap:6px;">
+                    <div style="display:flex;align-items:center;gap:10px;">
+                        <label for="muSlider">Peak Position (μ):</label>
+                        <input id="muSlider" type="range" min="0" max="1250" step="10" value="625" style="width:200px;">
+                        <span id="muLabel">625 m</span>
+                    </div>
+                    <div style="display:flex;align-items:center;gap:10px;">
+                        <label for="sigmaSlider">Std Dev (σ):</label>
+                        <input id="sigmaSlider" type="range" min="50" max="600" step="10" value="200" style="width:200px;">
+                        <span id="sigmaLabel">200 m</span>
+                    </div>
+                    <div style="display:flex;align-items:center;gap:10px;">
+                        <label for="ampSlider">Amplitude (A):</label>
+                        <input id="ampSlider" type="range" min="0.020" max="0.100" step="0.005" value="0.050" style="width:200px;">
+                        <span id="ampLabel">0.050 veh/m</span>
+                    </div>
+                </div>
+                <div id="sawtoothParams" style="display:none;flex-direction:column;gap:6px;">
+                    <div style="display:flex;align-items:center;gap:10px;">
+                        <label for="sawFreqSlider">Frequency (teeth):</label>
+                        <input id="sawFreqSlider" type="range" min="1" max="10" step="1" value="3" style="width:200px;">
+                        <span id="sawFreqLabel">3</span>
+                    </div>
+                    <div style="display:flex;align-items:center;gap:10px;">
+                        <label for="sawAmpSlider">Amplitude (A):</label>
+                        <input id="sawAmpSlider" type="range" min="0.020" max="0.100" step="0.005" value="0.050" style="width:200px;">
+                        <span id="sawAmpLabel">0.050 veh/m</span>
+                    </div>
+                    <div style="display:flex;align-items:center;gap:10px;">
+                        <label for="sawWidthSlider">Width:</label>
+                        <input id="sawWidthSlider" type="range" min="10" max="600" step="10" value="200" style="width:200px;">
+                        <span id="sawWidthLabel">200 m</span>
+                    </div>
+                </div>
+                <div style="display:flex;align-items:center;gap:10px;">
+                    <label for="vfSlider">Free Flow Speed (V<sub>0</sub>):</label>
+                    <input id="vfSlider" type="range" min="5" max="50" step="1" value="30" style="width:200px;">
+                    <span id="vfLabel">30 m/s</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:10px;">
+                    <label for="rhoMaxSlider">Jam Density (ρ<sub>jam</sub>):</label>
+                    <input id="rhoMaxSlider" type="range" min="0.04" max="0.20" step="0.005" value="0.111" style="width:200px;">
+                    <span id="rhoMaxLabel">0.111 veh/m</span>
+                </div>
+                <button id="restartBtn" type="button" style="width:fit-content;">Restart Simulation</button>
+            </div>
+            <div id="controls">
+                <label>
+                    Mode:
+                    <select id="modeSelect">
+                        <option value="wrap">Wraparound</option>
+                        <option value="finite">Finite Cars (No Inflow)</option>
+                        <option value="endless">Endless Random Cars</option>
+                    </select>
+                </label>
+                <button id="pauseBtn" type="button">Pause</button>
+            </div>
+            <canvas id="tfField" width="2500" height="260"></canvas>
+            <canvas id="densityField" width="2500" height="260"></canvas>
+            <canvas id="directMacroDensityField" width="2500" height="260"></canvas>
+            <canvas id="directMacroTravelTimeField" width="2500" height="260"></canvas>
+            <canvas id="densityLineCompare" width="2500" height="260"></canvas>
+            <canvas id="travelTimeLineCompare" width="2500" height="260"></canvas>
+        </div>
+
+        <script>
+            const canvas = document.getElementById("base");
+            const ctx = canvas.getContext("2d");
+            const hud = document.getElementById("hud");
+            const speedSlider = document.getElementById("speedSlider");
+            const speedLabel = document.getElementById("speedLabel");
+            speedSlider.addEventListener("input", () => {
+                speedLabel.textContent = parseFloat(speedSlider.value).toFixed(1) + "x";
+            });
+
+            let gaussMu = 625;
+            let gaussSigma = 200;
+            let gaussAmp = 0.05;
+
+            let sawFreq = 3;
+            let sawAmp = 0.05;
+            let sawWidth = 200;
+            let currentDensityModel = "gaussian";
+
+            const densityModelSelect = document.getElementById("densityModelSelect");
+            const gaussianParamsDiv = document.getElementById("gaussianParams");
+            const sawtoothParamsDiv = document.getElementById("sawtoothParams");
+
+            densityModelSelect.addEventListener("change", () => {
+                currentDensityModel = densityModelSelect.value;
+                if (currentDensityModel === "gaussian") {
+                    gaussianParamsDiv.style.display = "flex";
+                    sawtoothParamsDiv.style.display = "none";
+                } else {
+                    gaussianParamsDiv.style.display = "none";
+                    sawtoothParamsDiv.style.display = "flex";
+                }
+            });
+
+            const muSlider = document.getElementById("muSlider");
+            const muLabel = document.getElementById("muLabel");
+            const sigmaSlider = document.getElementById("sigmaSlider");
+            const sigmaLabel = document.getElementById("sigmaLabel");
+            const ampSlider = document.getElementById("ampSlider");
+            const ampLabel = document.getElementById("ampLabel");
+
+            const sawFreqSlider = document.getElementById("sawFreqSlider");
+            const sawFreqLabel = document.getElementById("sawFreqLabel");
+            const sawAmpSlider = document.getElementById("sawAmpSlider");
+            const sawAmpLabel = document.getElementById("sawAmpLabel");
+            const sawWidthSlider = document.getElementById("sawWidthSlider");
+            const sawWidthLabel = document.getElementById("sawWidthLabel");
+
+            const restartBtn = document.getElementById("restartBtn");
+
+            muSlider.addEventListener("input", () => {
+                gaussMu = parseFloat(muSlider.value);
+                muLabel.textContent = gaussMu.toFixed(0) + " m";
+            });
+            sigmaSlider.addEventListener("input", () => {
+                gaussSigma = parseFloat(sigmaSlider.value);
+                sigmaLabel.textContent = gaussSigma.toFixed(0) + " m";
+            });
+            ampSlider.addEventListener("input", () => {
+                gaussAmp = parseFloat(ampSlider.value);
+                ampLabel.textContent = gaussAmp.toFixed(3) + " veh/m";
+            });
+            sawFreqSlider.addEventListener("input", () => {
+                sawFreq = parseInt(sawFreqSlider.value);
+                sawFreqLabel.textContent = sawFreq;
+            });
+            sawAmpSlider.addEventListener("input", () => {
+                sawAmp = parseFloat(sawAmpSlider.value);
+                sawAmpLabel.textContent = sawAmp.toFixed(3) + " veh/m";
+            });
+            sawWidthSlider.addEventListener("input", () => {
+                sawWidth = parseFloat(sawWidthSlider.value);
+                sawWidthLabel.textContent = sawWidth.toFixed(0) + " m";
+            });
+
+            const vfSlider = document.getElementById("vfSlider");
+            const vfLabel = document.getElementById("vfLabel");
+            const rhoMaxSlider = document.getElementById("rhoMaxSlider");
+            const rhoMaxLabel = document.getElementById("rhoMaxLabel");
+
+            vfSlider.addEventListener("input", () => {
+                V0 = parseFloat(vfSlider.value);
+                DIRECT_MACRO_MAX_SPEED = V0;
+                vfLabel.textContent = V0.toFixed(0) + " m/s";
+            });
+            rhoMaxSlider.addEventListener("input", () => {
+                const rhoJam = parseFloat(rhoMaxSlider.value);
+                MIN_SPACING_M = Math.max(0.5, 1 / rhoJam - CAR_LENGTH_M);
+                DIRECT_MACRO_RHO_JAM = 1 / (CAR_LENGTH_M + MIN_SPACING_M);
+                rhoMaxLabel.textContent = rhoJam.toFixed(3) + " veh/m";
+            });
+
+            const modeSelect = document.getElementById("modeSelect");
+            const pauseBtn = document.getElementById("pauseBtn");
+
+            const tfCanvas = document.getElementById("tfField");
+            const tfCtx = tfCanvas.getContext("2d");
+
+            const densityCanvas = document.getElementById("densityField");
+            const densityCtx = densityCanvas.getContext("2d");
+
+            const directMacroDensityCanvas = document.getElementById("directMacroDensityField");
+            const directMacroDensityCtx = directMacroDensityCanvas.getContext("2d");
+
+            const directMacroTravelTimeCanvas = document.getElementById("directMacroTravelTimeField");
+            const directMacroTravelTimeCtx = directMacroTravelTimeCanvas.getContext("2d");
+
+            const densityLineCompareCanvas = document.getElementById("densityLineCompare");
+            const densityLineCompareCtx = densityLineCompareCanvas.getContext("2d");
+
+            const travelTimeLineCompareCanvas = document.getElementById("travelTimeLineCompare");
+            const travelTimeLineCompareCtx = travelTimeLineCompareCanvas.getContext("2d");
+
+            // ---------- Base scale ----------
+            const PX_PER_M = 2;
+            const ROAD_LENGTH_M = canvas.width / PX_PER_M; // 1250 m
+            const RING_LENGTH_M = 2 * ROAD_LENGTH_M;
+            const laneHeight = 32;
+            const stripeHeight = 6;
+            const roadYTop = 80;
+            const roadYBot = roadYTop + laneHeight + stripeHeight;
+            const roadHeight = laneHeight * 2 + stripeHeight;
+            const roadY = roadYTop + laneHeight / 2 + stripeHeight / 2;
+            const MICRO_ROAD_SURFACE_COLOR = "#6f6d67";
+            const tfRoadYTop = 50;
+            const tfRoadYBot = tfRoadYTop + laneHeight + stripeHeight;
+            const densityRoadYTop = 50;
+            const densityRoadYBot = densityRoadYTop + laneHeight + stripeHeight;
+
+            // ---------- Micro OVM parameters ----------
+            const r = 0.8;
+            let V0 = 30;
+            const mSharp = 0.2;
+            const b_f = 18;
+            let MIN_SPACING_M = 5;
+
+            const DT = 0.02;
+            const Tmax = 120;
+            const MAX_STEPS_PER_FRAME = 8;
+
+            const TF_RENDER_STRIP_PX = 4;
+            const TF_CAP_SECONDS = 240;
+            const TF_COLOR_SCALE_MIN = 0;
+            const TF_COLOR_SCALE_MAX = 100;
+
+            const ETA_FORECAST_DT = 0.25;
+            const ETA_FORECAST_MAX_TIME = 600;
+            const ETA_REFRESH_INTERVAL_STEPS = Math.max(1, Math.round(0.5 / DT));
+
+            const DENSITY_RENDER_STRIP_PX = 4;
+            // Single shared floor used by micro estimation, macro solver, and display.
+            const RHO_FLOOR = 0.003;
+            const DISPLAY_DENSITY_FLOOR = RHO_FLOOR;
+            const DENSITY_SCALE_MIN = RHO_FLOOR;
+            const DENSITY_SCALE_MAX = 0.1;
+
+            // ---------- Road / destination ----------
+            const MODE_WRAP = "wrap";
+            const MODE_FINITE = "finite";
+            const MODE_ENDLESS = "endless";
+
+            let simulationMode = MODE_WRAP;
+            let wraparoundEnabled = true;
+
+            const DESTINATION_L_M = 10000;
+
+            function computeDestinationMeters() {
+                return wraparoundEnabled
+                    ? ((DESTINATION_L_M % RING_LENGTH_M) + RING_LENGTH_M) % RING_LENGTH_M
+                    : Math.max(0, Math.min(DESTINATION_L_M, ROAD_LENGTH_M));
+            }
+
+            let l = computeDestinationMeters();
+
+            // ---------- Car geometry ----------
+            const CAR_RENDER_PX_PER_M = 5;
+            const CAR_LENGTH_M = 4;
+            const CAR_WIDTH_M = 4;
+            const CAR_LENGTH_PX = CAR_LENGTH_M * CAR_RENDER_PX_PER_M;
+            const CAR_WIDTH_PX = CAR_WIDTH_M * CAR_RENDER_PX_PER_M;
+            const TOP_LANE_Y = roadYTop - CAR_WIDTH_PX / 2;
+            const BOT_LANE_Y = roadYBot - CAR_WIDTH_PX / 2;
+            const carIcon = new Image();
+            carIcon.decoding = "async";
+            carIcon.src = "assets/cartopview.png";
+
+            // ---------- Macro ARZ model ----------
+            // LX and NX depend on mode: wrap uses full ring [0, 2L], open uses [0, L].
+            // DX is kept at 6.25 m in both cases (NX doubles for wrap).
+            let DIRECT_MACRO_LX = ROAD_LENGTH_M;
+            let DIRECT_MACRO_NX = 200;
+            const DIRECT_MACRO_NT = 6000;
+            const DIRECT_MACRO_TMAX = Tmax;
+            let DIRECT_MACRO_DX = DIRECT_MACRO_LX / DIRECT_MACRO_NX;
+            const DIRECT_MACRO_DT = DIRECT_MACRO_TMAX / DIRECT_MACRO_NT;
+
+            function setupMacroDimensions() {
+                if (simulationMode === MODE_WRAP) {
+                    DIRECT_MACRO_LX = 2 * ROAD_LENGTH_M;  // full ring
+                    DIRECT_MACRO_NX = 400;                 // keep DX = 6.25 m
+                } else {
+                    DIRECT_MACRO_LX = ROAD_LENGTH_M;
+                    DIRECT_MACRO_NX = 200;
+                }
+                DIRECT_MACRO_DX = DIRECT_MACRO_LX / DIRECT_MACRO_NX;
+            }
+
+            let DIRECT_MACRO_RHO_JAM = 1 / (CAR_LENGTH_M + MIN_SPACING_M); // veh/m
+            const DIRECT_MACRO_MIN_SPEED = 0.1;
+            let DIRECT_MACRO_MAX_SPEED = V0;
+            const DIRECT_MACRO_ARZ_TAU= 2;
+            const DIRECT_MACRO_ARZ_CFL = 0.4;
+            const DIRECT_MACRO_RHO_FLOOR = RHO_FLOOR;
+
+            const timeSteps = Array.from(
+                { length: Math.floor(Tmax / DT) + 1 },
+                (_, k) => Math.min(k * DT, Tmax)
+            );
+
+            const directMacroTimeSteps = Array.from(
+                { length: DIRECT_MACRO_NT + 1 },
+                (_, n) => (n * DIRECT_MACRO_TMAX) / DIRECT_MACRO_NT
+            );
+
+            // ---------- Snapshots ----------
+            const tfSnapshots = [];
+            const densitySnapshots = [];
+
+            let lastTfLegendRange = { min: 0, max: 1 };
+            let lastDensityRange = { min: 0, max: 0 };
+            let directMacroDensityRange = { min: 0, max: 0 };
+            let directMacroTravelTimeRange = { min: 0, max: 1 };
+
+            let directMacroRho = new Float32Array(DIRECT_MACRO_NX);
+            let directMacroU = new Float32Array(DIRECT_MACRO_NX);
+            let directMacroTravelTime = new Float32Array(DIRECT_MACRO_NX);
+
+            let directMacroRhoTx = [];
+            let directMacroUTx = [];
+            let directMacroTTx = [];
+
+            let endlessInflowSchedule = [];
+            let directMacroEndlessInflowRhoTx = new Float32Array(DIRECT_MACRO_NT + 1);
+            let directMacroEndlessInflowUTx = new Float32Array(DIRECT_MACRO_NT + 1);
+
+            // ---------- Helpers ----------
+            function clamp(value, min, max) {
+                return Math.min(max, Math.max(min, value));
+            }
+
+            function hslColor(i, n) {
+                const hue = (i * 360) / Math.max(n, 1);
+                return `hsl(${hue}, 80%, 55%)`;
+            }
+           
+            function dynamicCloseThreshold(speedMps) {
+                const v = Math.max(speedMps, 0);
+                return Math.max(5, 4 * Math.pow(v / 10, 2));
+            }
+
+            function tfColor(value, minValue, maxValue) {
+                const denom = Math.max(maxValue - minValue, 1e-6);
+                const ratio = clamp((value - minValue) / denom, 0, 1);
+                const rCol = Math.round(220 - 140 * ratio);
+                const gCol = Math.round(65 + 20 * (1 - ratio));
+                const bCol = Math.round(70 + 140 * ratio);
+                return `rgb(${rCol}, ${gCol}, ${bCol})`;
+            }
+
+            function densityColor(value, minValue, maxValue) {
+                const denom = Math.max(maxValue - minValue, 1e-6);
+                const ratio = clamp((value - minValue) / denom, 0, 1);
+                const rCol = Math.round(80 + 175 * ratio);
+                const gCol = Math.round(80 - 40 * ratio);
+                const bCol = Math.round(210 - 160 * ratio);
+                return `rgb(${rCol}, ${gCol}, ${bCol})`;
+            }
+
+            function displayDensity(value) {
+                return Math.max(value, DISPLAY_DENSITY_FLOOR);
+            }
+
+            function drawDashedCenterStripe(ctx, yTop, width, stripeThickness, baseColor = "#ffffff") {
+                const dashLength = stripeThickness * 6;
+                const gapLength = stripeThickness * 4;
+                ctx.save();
+                ctx.fillStyle = baseColor;
+                ctx.fillRect(0, yTop, width, stripeThickness);
+                ctx.fillStyle = "#f0c000";
+                for (let x = 0; x < width; x += dashLength + gapLength) {
+                    ctx.fillRect(x, yTop, Math.min(dashLength, width - x), stripeThickness);
+                }
+                ctx.restore();
+            }
+
+            function drawCarSprite(ctx, xPx, yPx, facingRight) {
+                if (!carIcon.complete || carIcon.naturalWidth === 0) {
+                    ctx.fillStyle = "#1f1f1f";
+                    ctx.fillRect(xPx, yPx, CAR_LENGTH_PX, CAR_WIDTH_PX);
+                    return;
+                }
+
+                ctx.save();
+                ctx.translate(xPx + CAR_LENGTH_PX / 2, yPx + CAR_WIDTH_PX / 2);
+                ctx.rotate(facingRight ? Math.PI / 2 : -Math.PI / 2);
+                ctx.drawImage(carIcon, -CAR_WIDTH_PX / 2, -CAR_LENGTH_PX / 2, CAR_WIDTH_PX, CAR_LENGTH_PX);
+                ctx.restore();
+            }
+
+            // ---------- Micro car class ----------
+            class Car {
+                constructor(number, xMeters, colour, velocity, acceleration) {
+                    this.number = number;
+                    this.colour = colour;
+                    this.x = xMeters;
+                    this.v = velocity;
+                    this.a = acceleration;
+                    this.remainingTravelTime = Infinity;
+                    this.hasArrived = false;
+                }
+
+                updateFollowing(dt, spaceToLeader) {
+                    const bClose = dynamicCloseThreshold(this.v);
+                    if (spaceToLeader < bClose) {
+                        this.a = -0.9 * this.v;;
+                    } else {
+                        const desired =
+                            V0 * (
+                                Math.tanh(mSharp * (spaceToLeader - b_f)) -
+                                Math.tanh(mSharp * (bClose - b_f))
+                            );
+                        this.a = r * (desired - this.v);
+                    }
+                    this.v += this.a * dt;
+                    if (this.v < 0) this.v = 0;
+                    this.x += this.v * dt;
+                }
+
+                updateLeader(dt) {
+                    this.a = r * (V0 - this.v);
+                    this.v += this.a * dt;
+                    if (this.v < 0) this.v = 0;
+                    this.x += this.v * dt;
+                }
+
+                draw() {
+                    const isTop = this.x < ROAD_LENGTH_M;
+                    const xScreen = isTop ? this.x : RING_LENGTH_M - this.x;
+                    const xPx = xScreen * PX_PER_M;
+                    const laneY = isTop ? TOP_LANE_Y : BOT_LANE_Y;
+                    drawCarSprite(ctx, xPx, laneY, isTop);
+                    if (this.number % 3 === 0) {
+                        const tt = Number.isFinite(this.remainingTravelTime)
+                            ? `${Math.max(this.remainingTravelTime, 0).toFixed(1)}s`
+                            : "inf";
+                        const boxW = 42;
+                        const boxH = 14;
+                        const boxX = xPx + CAR_LENGTH_PX / 2 - boxW / 2;
+                        const boxY = laneY - boxH - 4;
+                        ctx.fillStyle = "rgba(16,16,16,0.85)";
+                        ctx.fillRect(boxX, boxY, boxW, boxH);
+                        ctx.strokeStyle = "#f0f0f0";
+                        ctx.lineWidth = 1;
+                        ctx.strokeRect(boxX, boxY, boxW, boxH);
+                        ctx.fillStyle = "#f0f0f0";
+                        ctx.font = "10px Arial";
+                        ctx.textAlign = "center";
+                        ctx.textBaseline = "middle";
+                        ctx.fillText(tt, boxX + boxW / 2, boxY + boxH / 2 + 0.5);
+                    }
+                }
+            }
+
+            // ---------- Micro TT snapshotting ----------
+            function snapshotTravelTimeField() {
+                const topSamples = [], botSamples = [];
+                for (const car of cars) {
+                    const tt = car.hasArrived ? 0 : car.remainingTravelTime;
+                    if (!Number.isFinite(tt)) continue;
+                    if (car.x < ROAD_LENGTH_M) topSamples.push({ x: car.x, travelTime: tt });
+                    else botSamples.push({ x: RING_LENGTH_M - car.x, travelTime: tt });
+                }
+                if (wraparoundEnabled && l === 0) {
+                    // Destination at ring 0: cars ARRIVE here from the bottom lane
+                    // (ring 2500 → 0, screen x=0 of bottom). Anchor belongs in botSamples,
+                    // not topSamples — top lane screen x=0 is departure, not arrival.
+                    botSamples.push({ x: 0, travelTime: 0 });
+                } else if (l < ROAD_LENGTH_M) {
+                    topSamples.push({ x: l, travelTime: 0 });
+                } else {
+                    botSamples.push({ x: RING_LENGTH_M - l, travelTime: 0 });
+                }
+                topSamples.sort((a, b) => a.x - b.x);
+                botSamples.sort((a, b) => a.x - b.x);
+                if (topSamples.length === 0) topSamples.push({ x: 0, travelTime: TF_CAP_SECONDS }, { x: ROAD_LENGTH_M, travelTime: TF_CAP_SECONDS });
+                if (botSamples.length === 0) botSamples.push({ x: 0, travelTime: TF_CAP_SECONDS }, { x: ROAD_LENGTH_M, travelTime: TF_CAP_SECONDS });
+                tfSnapshots.push({ t, top: topSamples, bot: botSamples });
+            }
+
+            function spatialTfAt(samples, xMeters) {
+                if (samples.length === 0) return TF_CAP_SECONDS;
+                if (samples.length === 1) return samples[0].travelTime;
+                if (xMeters <= samples[0].x) return samples[0].travelTime;
+                if (xMeters >= samples[samples.length - 1].x) return samples[samples.length - 1].travelTime;
+
+                for (let i = 0; i < samples.length - 1; i++) {
+                    const left = samples[i];
+                    const right = samples[i + 1];
+                    if (xMeters >= left.x && xMeters <= right.x) {
+                        const dx = right.x - left.x;
+                        if (dx <= 1e-9) return Math.min(left.travelTime, right.travelTime);
+                        const w = (xMeters - left.x) / dx;
+                        return left.travelTime + w * (right.travelTime - left.travelTime);
+                    }
+                }
+                return samples[samples.length - 1].travelTime;
+            }
+
+            function T_F(timeSeconds, xMeters, lane) {
+                const getSamples = (snap) => snap[lane] || snap.top;
+                if (tfSnapshots.length === 0) return TF_CAP_SECONDS;
+                if (timeSeconds <= tfSnapshots[0].t) return spatialTfAt(getSamples(tfSnapshots[0]), xMeters);
+                const last = tfSnapshots[tfSnapshots.length - 1];
+                if (timeSeconds >= last.t) return spatialTfAt(getSamples(last), xMeters);
+                let hi = tfSnapshots.findIndex((snap) => snap.t >= timeSeconds);
+                if (hi <= 0) hi = 1;
+                const lo = hi - 1;
+                const lowSnap = tfSnapshots[lo];
+                const highSnap = tfSnapshots[hi];
+                const dtLocal = highSnap.t - lowSnap.t;
+                const alpha = dtLocal > 0 ? (timeSeconds - lowSnap.t) / dtLocal : 0;
+                return spatialTfAt(getSamples(lowSnap), xMeters) * (1 - alpha) + spatialTfAt(getSamples(highSnap), xMeters) * alpha;
+            }
+
+            function connectedMicroTravelTime(timeSeconds, xMeters, lane) {
+                const baseValue = T_F(timeSeconds, xMeters, lane);
+                if (lane !== "top") return baseValue;
+                const topBoundary = T_F(timeSeconds, ROAD_LENGTH_M, "top");
+                const botBoundary = T_F(timeSeconds, ROAD_LENGTH_M, "bot");
+                return baseValue + (botBoundary - topBoundary);
+            }
+
+            // ---------- Micro density snapshots (kernel density estimate) ----------
+            // Each car contributes a Gaussian kernel of bandwidth KDE_BW metres.
+            // KDE always covers one lane: [0, L], with KDE_NX cells of KDE_DX width.
+            // This is independent of DIRECT_MACRO_NX which doubles in wrap mode.
+            const KDE_BW = 20;              // kernel bandwidth (m)
+            const KDE_BW2 = KDE_BW * KDE_BW;
+            const KDE_CUTOFF = 3 * KDE_BW;
+            const KDE_NX = 200;             // always 200 cells per lane
+            const KDE_DX = ROAD_LENGTH_M / KDE_NX;  // 6.25 m — matches one-lane macro res
+
+            function kdeGrid(carPositions, periodic) {
+                const nx = KDE_NX;
+                const dx = KDE_DX;
+                const grid = new Float64Array(nx);
+
+                for (const xCar of carPositions) {
+                    const offsets = periodic ? [-ROAD_LENGTH_M, 0, ROAD_LENGTH_M] : [0];
+                    for (const offset of offsets) {
+                        const xc = xCar + offset;
+                        const iMin = Math.max(0, Math.floor((xc - KDE_CUTOFF) / dx));
+                        const iMax = Math.min(nx - 1, Math.ceil((xc + KDE_CUTOFF) / dx));
+                        for (let i = iMin; i <= iMax; i++) {
+                            const xCell = (i + 0.5) * dx;
+                            const d2 = (xCell - xc) * (xCell - xc);
+                            grid[i] += Math.exp(-0.5 * d2 / KDE_BW2);
+                        }
+                    }
+                }
+
+                // Normalise: integral of each kernel = KDE_BW * sqrt(2π), so each car
+                // contributes total mass 1 veh. Dividing by (KDE_BW*sqrt(2π)) converts
+                // kernel sums to density (veh/m). Then apply floor.
+                const norm = KDE_BW * Math.sqrt(2 * Math.PI);
+                for (let i = 0; i < nx; i++) {
+                    grid[i] = Math.max(grid[i] / norm, RHO_FLOOR);
+                }
+                return grid;
+            }
+
+            function computeMicroKdeGrids() {
+                const activeCars = wraparoundEnabled ? cars : cars.filter(c => !c.hasArrived);
+                const topPositions = [], botPositions = [];
+                for (const car of activeCars) {
+                    if (car.x < ROAD_LENGTH_M) topPositions.push(car.x);
+                    else botPositions.push(RING_LENGTH_M - car.x); // bot screen coords [0,L]
+                }
+                return {
+                    top: kdeGrid(topPositions, wraparoundEnabled),
+                    bot: kdeGrid(botPositions, wraparoundEnabled)
+                };
+            }
+
+            function snapshotDensityField() {
+                densitySnapshots.push({ t, grids: computeMicroKdeGrids() });
+            }
+
+            // Query the KDE grid stored in a snapshot by linear interpolation.
+            function spatialDensityAtGrid(grid, xMeters) {
+                const nx = KDE_NX;
+                const dx = KDE_DX;
+                const xi = xMeters / dx - 0.5;
+                const i0 = clamp(Math.floor(xi), 0, nx - 1);
+                const i1 = clamp(i0 + 1, 0, nx - 1);
+                const a = xi - i0;
+                return Math.max(grid[i0] * (1 - a) + grid[i1] * a, RHO_FLOOR);
+            }
+
+            // Legacy point-sample path kept for velocity estimation only.
+            function spatialDensityAt(samples, xMeters) {
+                if (samples.length === 0) return RHO_FLOOR;
+                if (samples.length === 1) return Math.max(samples[0].density, RHO_FLOOR);
+                if (xMeters <= samples[0].x) return Math.max(samples[0].density, RHO_FLOOR);
+                if (xMeters >= samples[samples.length - 1].x) return Math.max(samples[samples.length - 1].density, RHO_FLOOR);
+                for (let i = 0; i < samples.length - 1; i++) {
+                    const left = samples[i];
+                    const right = samples[i + 1];
+                    if (xMeters >= left.x && xMeters <= right.x) {
+                        const d = right.x - left.x;
+                        if (d <= 1e-9) return Math.max(left.density, right.density, RHO_FLOOR);
+                        const w = (xMeters - left.x) / d;
+                        return Math.max(left.density + w * (right.density - left.density), RHO_FLOOR);
+                    }
+                }
+                return Math.max(samples[samples.length - 1].density, RHO_FLOOR);
+            }
+
+            function estimateCarVelocitySamples() {
+                const activeCars = wraparoundEnabled
+                    ? cars.filter((car) => car.x < ROAD_LENGTH_M)
+                    : cars.filter((car) => !car.hasArrived);
+                if (activeCars.length === 0) {
+                    return [{ x: 0, velocity: 0 }, { x: ROAD_LENGTH_M, velocity: 0 }];
+                }
+
+                const ordered = [...activeCars].sort((a, b) => a.x - b.x);
+                const samples = ordered.map((car) => ({
+                    x: clamp(car.x, 0, ROAD_LENGTH_M),
+                    velocity: Math.max(car.v, 0)
+                }));
+                if (!wraparoundEnabled) {
+                    samples.push({ x: 0, velocity: 0 });
+                    samples.push({ x: ROAD_LENGTH_M, velocity: 0 });
+                }
+                return samples.sort((a, b) => a.x - b.x);
+            }
+
+            function spatialVelocityAt(samples, xMeters) {
+                if (samples.length === 0) return 0;
+                if (samples.length === 1) return samples[0].velocity;
+                if (xMeters <= samples[0].x) return samples[0].velocity;
+                if (xMeters >= samples[samples.length - 1].x) return samples[samples.length - 1].velocity;
+
+                for (let i = 0; i < samples.length - 1; i++) {
+                    const left = samples[i];
+                    const right = samples[i + 1];
+                    if (xMeters >= left.x && xMeters <= right.x) {
+                        const dx = right.x - left.x;
+                        if (dx <= 1e-9) return Math.max(left.velocity, right.velocity);
+                        const w = (xMeters - left.x) / dx;
+                        return left.velocity + w * (right.velocity - left.velocity);
+                    }
+                }
+                return samples[samples.length - 1].velocity;
+            }
+
+            function RHO_F(timeSeconds, xMeters, lane) {
+                const getGrid = (snap) => (snap.grids[lane] || snap.grids.top);
+                if (densitySnapshots.length === 0) return RHO_FLOOR;
+                if (timeSeconds <= densitySnapshots[0].t) return spatialDensityAtGrid(getGrid(densitySnapshots[0]), xMeters);
+
+                const last = densitySnapshots[densitySnapshots.length - 1];
+                if (timeSeconds >= last.t) return spatialDensityAtGrid(getGrid(last), xMeters);
+
+                let hi = densitySnapshots.findIndex((snap) => snap.t >= timeSeconds);
+                if (hi <= 0) hi = 1;
+                const lo = hi - 1;
+                const lowSnap = densitySnapshots[lo];
+                const highSnap = densitySnapshots[hi];
+                const dtLocal = highSnap.t - lowSnap.t;
+                const alpha = dtLocal > 0 ? (timeSeconds - lowSnap.t) / dtLocal : 0;
+                const lowVal = spatialDensityAtGrid(getGrid(lowSnap), xMeters);
+                const highVal = spatialDensityAtGrid(getGrid(highSnap), xMeters);
+                return Math.max(lowVal + alpha * (highVal - lowVal), RHO_FLOOR);
+            }
+
+            // ---------- Forecast ETA for micro ----------
+            function updateForecastCarFollowing(stateCar, dt, spaceToLeader) {
+                const bClose = dynamicCloseThreshold(stateCar.v);
+                if (spaceToLeader < bClose) {
+                    stateCar.a = -0.9*stateCar.v;
+                } else {
+                    const desired =
+                        V0 * (
+                            Math.tanh(mSharp * (spaceToLeader - b_f)) -
+                            Math.tanh(mSharp * (bClose - b_f))
+                        );
+                    stateCar.a = r * (desired - stateCar.v);
+                }
+                stateCar.v += stateCar.a * dt;
+                if (stateCar.v < 0) stateCar.v = 0;
+                stateCar.x += stateCar.v * dt;
+            }
+
+            function updateForecastLeader(stateCar, dt) {
+                stateCar.a = r * (V0 - stateCar.v);
+                stateCar.v += stateCar.a * dt;
+                if (stateCar.v < 0) stateCar.v = 0;
+                stateCar.x += stateCar.v * dt;
+            }
+
+            function cloneForecastState() {
+                return cars.map((car) => ({
+                    number: car.number,
+                    x: car.x,
+                    v: car.v,
+                    a: car.a,
+                    hasArrived: car.hasArrived
+                }));
+            }
+
+            function stepForecastWrap(stateCars, dt) {
+                const ordered = [...stateCars].sort((a, b) => a.x - b.x);
+                const spaces = new Map();
+                const movedByCar = new Map();
+
+                for (let i = 0; i < ordered.length; i++) {
+                    const car = ordered[i];
+                    const leader = ordered[(i + 1) % ordered.length];
+                    const rawGap = (leader.x - car.x + RING_LENGTH_M) % RING_LENGTH_M;
+                    spaces.set(car.number, Math.max(rawGap - CAR_LENGTH_M, MIN_SPACING_M));
+                    movedByCar.set(car.number, 0);
+                }
+
+                const oldWrappedX = new Map();
+                for (const car of ordered) {
+                    oldWrappedX.set(car.number, car.x);
+                    updateForecastCarFollowing(car, dt, spaces.get(car.number));
+                }
+
+                if (ordered.length > 1) {
+                    const minGap = CAR_LENGTH_M + MIN_SPACING_M;
+                    const unwrappedX = new Map();
+                    for (const car of ordered) unwrappedX.set(car.number, car.x);
+
+                    for (let pass = 0; pass < 3; pass++) {
+                        for (let i = ordered.length - 1; i >= 0; i--) {
+                            const car = ordered[i];
+                            const leader = i === ordered.length - 1 ? ordered[0] : ordered[i + 1];
+                            const leaderX =
+                                i === ordered.length - 1
+                                    ? unwrappedX.get(leader.number) + RING_LENGTH_M
+                                    : unwrappedX.get(leader.number);
+                            const maxAllowedX = leaderX - minGap;
+                            if (unwrappedX.get(car.number) > maxAllowedX) {
+                                unwrappedX.set(car.number, maxAllowedX);
+                                car.v = Math.min(car.v, leader.v);
+                            }
+                        }
+                    }
+
+                    for (const car of ordered) {
+                        const adjustedX = unwrappedX.get(car.number);
+                        movedByCar.set(car.number, Math.max(adjustedX - oldWrappedX.get(car.number), 0));
+                        car.x = ((adjustedX % RING_LENGTH_M) + RING_LENGTH_M) % RING_LENGTH_M;
+                    }
+                }
+
+                return movedByCar;
+            }
+
+            function stepForecastOpen(stateCars, dt) {
+                const activeCars = stateCars.filter((car) => !car.hasArrived);
+                const movedByCar = new Map();
+                for (const car of activeCars) movedByCar.set(car.number, 0);
+                if (activeCars.length === 0) return movedByCar;
+
+                const ordered = [...activeCars].sort((a, b) => a.x - b.x);
+                const leader = ordered[ordered.length - 1];
+                const oldX = new Map();
+                for (const car of ordered) oldX.set(car.number, car.x);
+
+                for (let i = ordered.length - 2; i >= 0; i--) {
+                    const car = ordered[i];
+                    const carLeader = ordered[i + 1];
+                    const rawGap = Math.max(carLeader.x - car.x - CAR_LENGTH_M, 0);
+                    const spaceToLeader = Math.max(rawGap, MIN_SPACING_M);
+                    updateForecastCarFollowing(car, dt, spaceToLeader);
+                    const maxAllowedX = carLeader.x - CAR_LENGTH_M - MIN_SPACING_M;
+                    if (car.x > maxAllowedX) {
+                        car.x = maxAllowedX;
+                        car.v = Math.min(car.v, carLeader.v);
+                    }
+                    if (car.x < 0) {
+                        car.x = 0;
+                        car.v = 0;
+                    }
+                }
+
+                updateForecastLeader(leader, dt);
+
+                for (let i = ordered.length - 2; i >= 0; i--) {
+                    const car = ordered[i];
+                    const carLeader = ordered[i + 1];
+                    const maxAllowedX = carLeader.x - CAR_LENGTH_M - MIN_SPACING_M;
+                    if (car.x > maxAllowedX) {
+                        car.x = maxAllowedX;
+                        car.v = Math.min(car.v, carLeader.v);
+                    }
+                    if (car.x < 0) {
+                        car.x = 0;
+                        car.v = 0;
+                    }
+                }
+
+                for (const car of activeCars) {
+                    movedByCar.set(car.number, Math.max(car.x - oldX.get(car.number), 0));
+                    if (car.x >= l) {
+                        car.hasArrived = true;
+                        car.v = 0;
+                        car.a = 0;
+                    }
+                }
+
+                return movedByCar;
+            }
+
+            function recomputeTravelTimesByForecast() {
+                const forecastCars = cloneForecastState();
+                const etaByCar = new Map();
+                const progressByCar = new Map();
+                const targetDistanceByCar = new Map();
+
+                for (const car of cars) {
+                    if (car.hasArrived) {
+                        etaByCar.set(car.number, 0);
+                        continue;
+                    }
+                    const targetDistance = wraparoundEnabled
+                        ? (l - car.x + RING_LENGTH_M) % RING_LENGTH_M
+                        : Math.max(l - car.x, 0);
+                    if (targetDistance <= 1e-9) {
+                        etaByCar.set(car.number, 0);
+                    } else {
+                        progressByCar.set(car.number, 0);
+                        targetDistanceByCar.set(car.number, targetDistance);
+                    }
+                }
+
+                let elapsed = 0;
+                while (elapsed < ETA_FORECAST_MAX_TIME && etaByCar.size < cars.length) {
+                    const movedByCar = wraparoundEnabled
+                        ? stepForecastWrap(forecastCars, ETA_FORECAST_DT)
+                        : stepForecastOpen(forecastCars, ETA_FORECAST_DT);
+
+                    for (const [carNumber, targetDistance] of targetDistanceByCar.entries()) {
+                        if (etaByCar.has(carNumber)) continue;
+                        const previousProgress = progressByCar.get(carNumber) || 0;
+                        const movement = movedByCar.get(carNumber) || 0;
+                        const newProgress = previousProgress + movement;
+                        if (newProgress >= targetDistance) {
+                            const remaining = targetDistance - previousProgress;
+                            const frac = movement > 1e-9 ? remaining / movement : 1;
+                            etaByCar.set(carNumber, elapsed + clamp(frac, 0, 1) * ETA_FORECAST_DT);
+                        } else {
+                            progressByCar.set(carNumber, newProgress);
+                        }
+                    }
+                    elapsed += ETA_FORECAST_DT;
+                }
+
+                for (const car of cars) {
+                    car.remainingTravelTime = etaByCar.has(car.number)
+                        ? etaByCar.get(car.number)
+                        : (car.hasArrived ? 0 : TF_CAP_SECONDS);
+                }
+            }
+
+            // ---------- Endless inflow ----------
+            const INITIAL_SPEED_MIN_MPS = 2;
+            const INITIAL_SPEED_MAX_MPS = 3;
+            const INITIAL_CAR_COUNT = 50;
+            const INITIAL_HEADWAY_WEIGHT_VARIATION = 0.5;
+            const ENDLESS_ENTRY_MIN_GAP_M = CAR_LENGTH_M + MIN_SPACING_M + 8;
+            const ENDLESS_INTERARRIVAL_MIN_S = 2.0;
+            const ENDLESS_INTERARRIVAL_MAX_S = 5.0;
+
+            function buildRandomInitialPositions(count) {
+                const minHeadway = CAR_LENGTH_M + MIN_SPACING_M;
+                const maxCarsAtMinGap = Math.floor(RING_LENGTH_M / minHeadway);
+                const safeCount = Math.min(count, Math.max(1, maxCarsAtMinGap));
+                const slack = Math.max(RING_LENGTH_M - safeCount * minHeadway, 0);
+                const weights = Array.from(
+                    { length: safeCount },
+                    () => 1 + INITIAL_HEADWAY_WEIGHT_VARIATION * (2 * Math.random() - 1)
+                );
+                const weightSum = weights.reduce((acc, val) => acc + val, 0);
+                const headways = weights.map((w) => minHeadway + (slack * w) / weightSum);
+                const positions = [];
+                let x = 0;
+                for (let i = 0; i < safeCount; i++) {
+                    positions.push(x);
+                    x += headways[i];
+                }
+                return positions;
+            }
+
+            function buildGaussianInitialPositions() {
+                const minHeadway = CAR_LENGTH_M + MIN_SPACING_M;
+                const sampleStep = 1; // metres between sample points
+                const positions = [];
+                let cumulative = 0;
+                let emitted = 0;
+
+                for (let x = 0; x < RING_LENGTH_M; x += sampleStep) {
+                    const rho = Math.max(gaussAmp * Math.exp(-0.5 * ((x - gaussMu) / gaussSigma) ** 2), 0.001);
+                    cumulative += rho * sampleStep;
+                    while (emitted + 0.5 <= cumulative) {
+                        const candidate = Math.min(x, RING_LENGTH_M - CAR_LENGTH_M);
+                        const prev = positions[positions.length - 1];
+                        if (prev === undefined || candidate - prev >= minHeadway) {
+                            positions.push(candidate);
+                        }
+                        emitted += 1;
+                    }
+                }
+                return positions;
+            }
+
+            function sawtoothDensityAt(xMeters) {
+                const period = RING_LENGTH_M / sawFreq;
+                const w = Math.min(sawWidth, period);
+                const xInPeriod = ((xMeters % period) + period) % period;
+                if (xInPeriod < w) {
+                    return Math.max(sawAmp * (xInPeriod / w), 0.001);
+                }
+                return 0.001;
+            }
+
+            function buildSawtoothInitialPositions() {
+                const minHeadway = CAR_LENGTH_M + MIN_SPACING_M;
+                const sampleStep = 1;
+                const positions = [];
+                let cumulative = 0;
+                let emitted = 0;
+
+                for (let x = 0; x < RING_LENGTH_M; x += sampleStep) {
+                    const rho = sawtoothDensityAt(x);
+                    cumulative += rho * sampleStep;
+                    while (emitted + 0.5 <= cumulative) {
+                        const candidate = Math.min(x, RING_LENGTH_M - CAR_LENGTH_M);
+                        const prev = positions[positions.length - 1];
+                        if (prev === undefined || candidate - prev >= minHeadway) {
+                            positions.push(candidate);
+                        }
+                        emitted += 1;
+                    }
+                }
+                return positions;
+            }
+
+            function buildInitialPositions() {
+                if (currentDensityModel === "sawtooth") return buildSawtoothInitialPositions();
+                return buildGaussianInitialPositions();
+            }
+
+            function randomInitialSpeed() {
+                return INITIAL_SPEED_MIN_MPS +
+                    Math.random() * (INITIAL_SPEED_MAX_MPS - INITIAL_SPEED_MIN_MPS);
+            }
+
+            // Solve the OVM fixed-point v = F(v) for a given bumper-to-bumper spacing.
+            // Uses the same bisection approach as solveVEqSlow so micro and macro
+            // equilibria are identical.
+            function microEquilibriumSpeed(spacing) {
+                function F(v) {
+                    const bCloseEq = dynamicCloseThreshold(v);
+                    return clamp(
+                        V0 * (
+                            Math.tanh(mSharp * (spacing - b_f)) -
+                            Math.tanh(mSharp * (bCloseEq - b_f))
+                        ),
+                        0,
+                        V0
+                    );
+                }
+                let lo = 0, hi = V0;
+                for (let iter = 0; iter < 50; iter++) {
+                    const mid = (lo + hi) * 0.5;
+                    if (mid - F(mid) <= 0) lo = mid;
+                    else hi = mid;
+                    if (hi - lo < 1e-5) break;
+                }
+                return (lo + hi) * 0.5;
+            }
+
+            // Compute equilibrium initial speeds for each car based on its headway
+            // to the next car, so the micro model starts in the same state as the macro.
+            function buildEquilibriumInitialSpeeds(positions) {
+                const n = positions.length;
+                if (n === 0) return [];
+                const indexed = positions.map((x, i) => ({ x, i })).sort((a, b) => a.x - b.x);
+                const speeds = new Array(n);
+                for (let k = 0; k < n; k++) {
+                    let gap;
+                    if (wraparoundEnabled) {
+                        const next = indexed[(k + 1) % n];
+                        const rawGap = ((next.x - indexed[k].x) + RING_LENGTH_M) % RING_LENGTH_M;
+                        gap = Math.max(rawGap - CAR_LENGTH_M, MIN_SPACING_M);
+                    } else {
+                        if (k === n - 1) {
+                            gap = Infinity; // leader has open road ahead
+                        } else {
+                            const rawGap = indexed[k + 1].x - indexed[k].x;
+                            gap = Math.max(rawGap - CAR_LENGTH_M, MIN_SPACING_M);
+                        }
+                    }
+                    speeds[indexed[k].i] = Number.isFinite(gap) ? microEquilibriumSpeed(gap) : V0;
+                }
+                return speeds;
+            }
+
+            function sampleEndlessInterarrivalSeconds() {
+                return ENDLESS_INTERARRIVAL_MIN_S +
+                    Math.random() * (ENDLESS_INTERARRIVAL_MAX_S - ENDLESS_INTERARRIVAL_MIN_S);
+            }
+
+            function buildEndlessInflowSchedule(maxTimeSeconds) {
+                const schedule = [];
+                let nextArrivalTime = sampleEndlessInterarrivalSeconds();
+                while (nextArrivalTime <= maxTimeSeconds) {
+                    schedule.push({
+                        time: nextArrivalTime,
+                        speed: randomInitialSpeed()
+                    });
+                    nextArrivalTime += sampleEndlessInterarrivalSeconds();
+                }
+                return schedule;
+            }
+
+            function canInsertCarAtUpstream() {
+                const activeCars = cars.filter((car) => !car.hasArrived);
+                if (activeCars.length === 0) return true;
+                let minX = Infinity;
+                for (const car of activeCars) {
+                    if (car.x < minX) minX = car.x;
+                }
+                return minX >= ENDLESS_ENTRY_MIN_GAP_M;
+            }
+
+            function spawnOneEndlessCar(entrySpeed = randomInitialSpeed()) {
+                const car = new Car(
+                    nextCarNumber,
+                    0,
+                    hslColor(nextCarNumber - 1, 360),
+                    entrySpeed,
+                    0
+                );
+                car.hasArrived = false;
+                car.remainingTravelTime = TF_CAP_SECONDS;
+                cars.push(car);
+                nextCarNumber += 1;
+                cumulativeSpawned += 1;
+            }
+
+            function buildDirectMacroEndlessInflowSeries(NtLocal) {
+                const inflowRho = new Float32Array(NtLocal + 1);
+                const inflowU = new Float32Array(NtLocal + 1);
+
+                let scheduleIndex = 0;
+                for (let n = 1; n <= NtLocal; n++) {
+                    const tPrev = directMacroTimeSteps[n - 1];
+                    const tNow = directMacroTimeSteps[n];
+                    let arrivalsThisStep = 0;
+                    let speedSum = 0;
+
+                    while (
+                        scheduleIndex < endlessInflowSchedule.length &&
+                        endlessInflowSchedule[scheduleIndex].time <= tNow
+                    ) {
+                        if (endlessInflowSchedule[scheduleIndex].time > tPrev) {
+                            arrivalsThisStep += 1;
+                            speedSum += endlessInflowSchedule[scheduleIndex].speed;
+                        }
+                        scheduleIndex += 1;
+                    }
+
+                    if (arrivalsThisStep > 0) {
+                        const qIn = arrivalsThisStep / DIRECT_MACRO_DT;
+                        const uIn = Math.max(speedSum / arrivalsThisStep, DIRECT_MACRO_MIN_SPEED);
+                        inflowRho[n] = Math.min(qIn / uIn, DIRECT_MACRO_RHO_JAM);
+                        inflowU[n] = uIn;
+                    } else {
+                        inflowRho[n] = 0;
+                        inflowU[n] = DIRECT_MACRO_MAX_SPEED;
+                    }
+                }
+
+                return { inflowRho, inflowU };
+            }
+
+            function sampleDirectMacroBoundarySeries(series, timeSeconds) {
+                const xi = clamp(timeSeconds / DIRECT_MACRO_DT, 0, DIRECT_MACRO_NT);
+                const i0 = clamp(Math.floor(xi), 0, DIRECT_MACRO_NT);
+                const i1 = clamp(i0 + 1, 0, DIRECT_MACRO_NT);
+                const a = xi - i0;
+                return series[i0] * (1 - a) + series[i1] * a;
+            }
+
+            // ---------- Macro ARZ primitives ----------
+            const TABLE_SIZE = 2048;
+            const veqTable = new Float32Array(TABLE_SIZE + 1);
+            const pTable = new Float32Array(TABLE_SIZE + 1);
+            const pPrimeTable = new Float32Array(TABLE_SIZE + 1);
+
+            function solveVEqSlow(rho) {
+                const rhoSafe = Math.max(rho, DIRECT_MACRO_RHO_FLOOR);
+                const macroSpacing = Math.max(1 / rhoSafe - CAR_LENGTH_M, MIN_SPACING_M);
+
+                // We need v_eq such that v_eq = F(v_eq), where:
+                //   F(v) = V0 * (tanh(m*(s-b_f)) - tanh(m*(bClose(v)-b_f)))
+                // The fixed-point iteration v <- F(v) oscillates because F'(v) < 0
+                // (higher v → higher bClose → lower F). Instead, solve g(v)=v-F(v)=0
+                // by bisection. g is strictly monotone (g'=1-F'>1) so bisection is
+                // guaranteed to converge to the unique root.
+                function F(v) {
+                    const bCloseEq = dynamicCloseThreshold(v);
+                    return clamp(
+                        DIRECT_MACRO_MAX_SPEED * (
+                            Math.tanh(mSharp * (macroSpacing - b_f)) -
+                            Math.tanh(mSharp * (bCloseEq - b_f))
+                        ),
+                        0,
+                        DIRECT_MACRO_MAX_SPEED
+                    );
+                }
+
+                let lo = 0, hi = DIRECT_MACRO_MAX_SPEED;
+                for (let iter = 0; iter < 50; iter++) {
+                    const mid = (lo + hi) * 0.5;
+                    if (mid - F(mid) <= 0) lo = mid;
+                    else hi = mid;
+                    if (hi - lo < 1e-5) break;
+                }
+                return (lo + hi) * 0.5;
+            }
+
+            function buildMacroLookupTables() {
+                for (let i = 0; i <= TABLE_SIZE; i++) {
+                    const rho = (i / TABLE_SIZE) * DIRECT_MACRO_RHO_JAM;
+                    const vEq = solveVEqSlow(rho);
+                    veqTable[i] = vEq;
+                    pTable[i] = DIRECT_MACRO_MAX_SPEED - vEq;
+                }
+
+                for (let i = 1; i < TABLE_SIZE; i++) {
+                    const dr = DIRECT_MACRO_RHO_JAM / TABLE_SIZE;
+                    pPrimeTable[i] = (pTable[i + 1] - pTable[i - 1]) / (2 * dr);
+                }
+                pPrimeTable[0] = pPrimeTable[1];
+                pPrimeTable[TABLE_SIZE] = pPrimeTable[TABLE_SIZE - 1];
+            }
+
+            function lookupTable(table, rho) {
+                const rhoClamped = clamp(rho, 0, DIRECT_MACRO_RHO_JAM);
+                const xi = (rhoClamped / DIRECT_MACRO_RHO_JAM) * TABLE_SIZE;
+                const i0 = Math.floor(xi);
+                const i1 = Math.min(i0 + 1, TABLE_SIZE);
+                const a = xi - i0;
+                return table[i0] * (1 - a) + table[i1] * a;
+            }
+
+            function directMacroEquilibriumVelocity(rho) {
+                return lookupTable(veqTable, rho);
+            }
+
+            function directMacroPressure(rho) {
+                return lookupTable(pTable, rho);
+            }
+
+            function directMacroPressurePrime(rho) {
+                return lookupTable(pPrimeTable, rho);
+            }
+
+            function directMacroVelocityFromState(rho, y) {
+                const rhoSafe = Math.max(rho, DIRECT_MACRO_RHO_FLOOR);
+                return y / rhoSafe - directMacroPressure(rhoSafe);
+            }
+
+            function directMacroFluxFromState(rho, y) {
+                const v = directMacroVelocityFromState(rho, y);
+                return {
+                    rho: rho * v,
+                    y: y * v
+                };
+            }
+
+            function directMacroRusanovFlux(rhoLeft, yLeft, rhoRight, yRight, aInterface) {
+                const fluxLeft = directMacroFluxFromState(rhoLeft, yLeft);
+                const fluxRight = directMacroFluxFromState(rhoRight, yRight);
+                return {
+                    rho:
+                        0.5 * (fluxLeft.rho + fluxRight.rho) -
+                        0.5 * aInterface * (rhoRight - rhoLeft),
+                    y:
+                        0.5 * (fluxLeft.y + fluxRight.y) -
+                        0.5 * aInterface * (yRight - yLeft)
+                };
+            }
+
+            function analyticalDensityAt(xMeters) {
+                // Use the same analytical profile that placed the micro cars,
+                // so both models start from identical initial conditions.
+                let rho;
+                if (currentDensityModel === "sawtooth") {
+                    rho = sawtoothDensityAt(xMeters);
+                } else {
+                    rho = gaussAmp * Math.exp(-0.5 * ((xMeters - gaussMu) / gaussSigma) ** 2);
+                }
+                return Math.max(rho, RHO_FLOOR);
+            }
+
+            function buildDirectMacroInitialStateFromMicro() {
+                const rho = new Float32Array(DIRECT_MACRO_NX);
+                const u = new Float32Array(DIRECT_MACRO_NX);
+                const y = new Float32Array(DIRECT_MACRO_NX);
+
+                for (let i = 0; i < DIRECT_MACRO_NX; i++) {
+                    const x = (i + 0.5) * DIRECT_MACRO_DX;
+                    // Initialise from the analytical density profile rather than noisy
+                    // car-position estimates — both models then start from the same state.
+                    rho[i] = analyticalDensityAt(x);
+                    u[i] = directMacroEquilibriumVelocity(rho[i]);
+                }
+
+                for (let i = 0; i < DIRECT_MACRO_NX; i++) {
+                    const rhoSafe = Math.max(rho[i], DIRECT_MACRO_RHO_FLOOR);
+                    y[i] = rhoSafe * (u[i] + directMacroPressure(rhoSafe));
+                }
+
+                return {
+                    rho,
+                    y
+                };
+            }
+
+            function buildDirectMacroTravelTimeHistory() {
+                const Nx = DIRECT_MACRO_NX;
+                const Nt = DIRECT_MACRO_NT;
+                const dx = DIRECT_MACRO_DX;
+
+                directMacroTTx = Array.from({ length: Nt + 1 }, () => new Float32Array(Nx));
+
+                const terminalRow = directMacroTTx[Nt];
+                terminalRow[Nx - 1] = 0;
+                for (let i = Nx - 2; i >= 0; i--) {
+                    const uSafe = Math.max(directMacroUTx[Nt][i], DIRECT_MACRO_MIN_SPEED);
+                    terminalRow[i] = terminalRow[i + 1] + dx / uSafe;
+                }
+
+                for (let n = 0; n <= Nt; n++) {
+                    directMacroTTx[n][Nx - 1] = 0;
+                }
+
+                for (let n = Nt - 1; n >= 0; n--) {
+                    const ttNext = directMacroTTx[n + 1];
+                    const ttNow = directMacroTTx[n];
+                    const dtLocal = directMacroTimeSteps[n + 1] - directMacroTimeSteps[n];
+                    ttNow[Nx - 1] = 0;
+
+                    for (let i = Nx - 2; i >= 0; i--) {
+                        const uSafe = Math.max(directMacroUTx[n][i], DIRECT_MACRO_MIN_SPEED);
+                        ttNow[i] =
+                            ttNext[i] +
+                            dtLocal * (1 + uSafe * (ttNext[i + 1] - ttNext[i]) / dx);
+                    }
+                }
+            }
+//START OF MACRO SIM - PRIMARY CODE
+            // ---------- Macro ARZ solve ----------
+            function recomputeDirectMacroFieldsFromInitial() {
+                const Nx = DIRECT_MACRO_NX;
+                const Nt = DIRECT_MACRO_NT;
+                const dx = DIRECT_MACRO_DX;
+
+                directMacroRhoTx = Array.from({ length: Nt + 1 }, () => new Float32Array(Nx));
+                directMacroUTx = Array.from({ length: Nt + 1 }, () => new Float32Array(Nx));
+
+                if (simulationMode === MODE_ENDLESS) {
+                    const inflow = buildDirectMacroEndlessInflowSeries(Nt);
+                    directMacroEndlessInflowRhoTx = inflow.inflowRho;
+                    directMacroEndlessInflowUTx = inflow.inflowU;
+                } else {
+                    directMacroEndlessInflowRhoTx = new Float32Array(Nt + 1);
+                    directMacroEndlessInflowUTx = new Float32Array(Nt + 1);
+                    for (let n = 0; n <= Nt; n++) {
+                        directMacroEndlessInflowUTx[n] = DIRECT_MACRO_MAX_SPEED;
+                    }
+                }
+
+                const init = buildDirectMacroInitialStateFromMicro();
+                let rho = init.rho.slice();
+                let y = init.y.slice();
+                for (let i = 0; i < Nx; i++) {
+                    directMacroRhoTx[0][i] = rho[i];
+                    directMacroUTx[0][i] = directMacroVelocityFromState(rho[i], y[i]);
+                }
+
+                let currentTime = 0;
+                for (let n = 1; n <= Nt; n++) {
+                    const targetTime = directMacroTimeSteps[n];
+
+                    while (currentTime < targetTime - 1e-9) {
+                        const p = new Float32Array(Nx);
+                        const v = new Float32Array(Nx);
+                        const p_prime = new Float32Array(Nx);
+                        const epsilon = 1e-4 * DIRECT_MACRO_RHO_JAM;
+
+                        let aMax = 0;
+                        //p_prime is derivative of p with respect to rho. solved numerically below because analytic solve is way too hard
+                        for (let i = 0; i < Nx; i++) {
+                            const rhoSafe = Math.max(rho[i], DIRECT_MACRO_RHO_FLOOR);
+                            p[i] = directMacroPressure(rhoSafe);
+                            p_prime[i] = (directMacroPressure(rhoSafe + epsilon) - directMacroPressure(rhoSafe - epsilon)) / (2*epsilon);
+                            v[i] = directMacroVelocityFromState(rhoSafe, y[i]);
+                            const lam1 = v[i];
+                            const lam2 = v[i] - rhoSafe * p_prime[i];
+                            aMax = Math.max(aMax, Math.abs(lam1), Math.abs(lam2));
+                        }
+
+                        const dtLocal = Math.min(
+                            targetTime - currentTime,
+                            DIRECT_MACRO_ARZ_CFL * dx / Math.max(aMax, 1e-6)
+                        );
+
+                        if (dtLocal <= 1e-9) {
+                            currentTime = targetTime;
+                            break;
+                        }
+
+                        const rhoNew = new Float32Array(Nx);
+                        const yStar = new Float32Array(Nx);
+
+                        if (simulationMode === MODE_WRAP) {
+                            const fluxRho = new Float32Array(Nx);
+                            const fluxY = new Float32Array(Nx);
+
+                            for (let i = 0; i < Nx; i++) {
+                                const iRight = (i + 1) % Nx;
+                                const aInterface = Math.max(
+                                    Math.abs(v[i]),
+                                    Math.abs(v[i] - rho[i] * p_prime[i]),
+                                    Math.abs(v[iRight]),
+                                    Math.abs(v[iRight] - rho[iRight] * p_prime[iRight])
+                                );
+                                const flux = directMacroRusanovFlux(
+                                    rho[i],
+                                    y[i],
+                                    rho[iRight],
+                                    y[iRight],
+                                    aInterface
+                                );
+                                fluxRho[i] = flux.rho;
+                                fluxY[i] = flux.y;
+                            }
+
+                            for (let i = 0; i < Nx; i++) {
+                                const iLeft = (i - 1 + Nx) % Nx;
+                                rhoNew[i] = Math.max(
+                                    rho[i] - (dtLocal / dx) * (fluxRho[i] - fluxRho[iLeft]),
+                                    DIRECT_MACRO_RHO_FLOOR
+                                );
+                                yStar[i] = y[i] - (dtLocal / dx) * (fluxY[i] - fluxY[iLeft]);
+                            }
+                        } else {
+                            const fluxRho = new Float32Array(Nx + 1);
+                            const fluxY = new Float32Array(Nx + 1);
+                            const boundaryTime = Math.min(currentTime + 0.5 * dtLocal, DIRECT_MACRO_TMAX);
+                            const leftBoundaryRho =
+                                simulationMode === MODE_ENDLESS
+                                    ? sampleDirectMacroBoundarySeries(directMacroEndlessInflowRhoTx, boundaryTime)
+                                    : 0;
+                            const leftBoundaryU =
+                                simulationMode === MODE_ENDLESS
+                                    ? sampleDirectMacroBoundarySeries(directMacroEndlessInflowUTx, boundaryTime)
+                                    : DIRECT_MACRO_MAX_SPEED;
+                            const leftBoundaryY =
+                                leftBoundaryRho *
+                                (leftBoundaryU + directMacroPressure(Math.max(leftBoundaryRho, DIRECT_MACRO_RHO_FLOOR)));
+                            const rightBoundaryRho = rho[Nx - 1];
+                            const rightBoundaryY = y[Nx - 1];
+                            const rightBoundaryV = directMacroVelocityFromState(rightBoundaryRho, rightBoundaryY);
+                            const rightBoundaryP = directMacroPressure(Math.max(rightBoundaryRho, DIRECT_MACRO_RHO_FLOOR));
+
+                            {
+                                const leftBoundaryV = directMacroVelocityFromState(
+                                    Math.max(leftBoundaryRho, DIRECT_MACRO_RHO_FLOOR),
+                                    leftBoundaryY
+                                );
+                                const leftBoundaryP = directMacroPressure(
+                                    Math.max(leftBoundaryRho, DIRECT_MACRO_RHO_FLOOR)
+                                );
+                                
+                                const leftBoundaryPPrime = (directMacroPressure(leftBoundaryRho + epsilon) - directMacroPressure(leftBoundaryRho - epsilon)) / (2*epsilon);
+                                const rightBoundaryPPrime = (directMacroPressure(rightBoundaryRho + epsilon) - directMacroPressure(rightBoundaryRho - epsilon)) / (2*epsilon);
+
+                                const aInterface = Math.max(
+                                    Math.abs(leftBoundaryV),
+                                    Math.abs(leftBoundaryV - leftBoundaryRho * leftBoundaryPPrime),
+                                    Math.abs(v[0]),
+                                    Math.abs(v[0] - rho[0] * p_prime[0])
+                                );
+                                const flux = directMacroRusanovFlux(
+                                    leftBoundaryRho,
+                                    leftBoundaryY,
+                                    rho[0],
+                                    y[0],
+                                    aInterface
+                                );
+                                fluxRho[0] = flux.rho;
+                                fluxY[0] = flux.y;
+                            }
+
+                            for (let i = 0; i < Nx - 1; i++) {
+                                const iRight = i + 1;
+                                const aInterface = Math.max(
+                                    Math.abs(v[i]),
+                                    Math.abs(v[i] - rho[i] * p_prime[i]),
+                                    Math.abs(v[iRight]),
+                                    Math.abs(v[iRight] - rho[iRight] * p_prime[iRight])
+                                );
+                                const flux = directMacroRusanovFlux(
+                                    rho[i],
+                                    y[i],
+                                    rho[iRight],
+                                    y[iRight],
+                                    aInterface
+                                );
+                                fluxRho[i + 1] = flux.rho;
+                                fluxY[i + 1] = flux.y;
+                            }
+
+                            {
+                                const aInterface = Math.max(
+                                    Math.abs(v[Nx - 1]),
+                                    Math.abs(v[Nx - 1] - rho[Nx-1] * p_prime[Nx - 1]),
+                                    Math.abs(rightBoundaryV),
+                                    Math.abs(rightBoundaryV - rightBoundaryRho * rightBoundaryPPrime)
+                                );
+                                const flux = directMacroRusanovFlux(
+                                    rho[Nx - 1],
+                                    y[Nx - 1],
+                                    rightBoundaryRho,
+                                    rightBoundaryY,
+                                    aInterface
+                                );
+                                fluxRho[Nx] = flux.rho;
+                                fluxY[Nx] = flux.y;
+                            }
+
+                            for (let i = 0; i < Nx; i++) {
+                                rhoNew[i] = Math.max(
+                                    rho[i] - (dtLocal / dx) * (fluxRho[i + 1] - fluxRho[i]),
+                                    DIRECT_MACRO_RHO_FLOOR
+                                );
+                                yStar[i] = y[i] - (dtLocal / dx) * (fluxY[i + 1] - fluxY[i]);
+                            }
+                        }
+
+                        const yNew = new Float32Array(Nx);
+                        for (let i = 0; i < Nx; i++) {
+                            const rhoSafe = Math.max(rhoNew[i], DIRECT_MACRO_RHO_FLOOR);
+                            const vStar = directMacroVelocityFromState(rhoSafe, yStar[i]);
+                            const mEq = directMacroEquilibriumVelocity(rhoSafe);
+                            yNew[i] = yStar[i] + dtLocal * rhoSafe * (mEq - vStar) / DIRECT_MACRO_ARZ_TAU;
+                        }
+
+                        rho = rhoNew;
+                        y = yNew;
+                        currentTime += dtLocal;
+                    }
+
+                    for (let i = 0; i < Nx; i++) {
+                        directMacroRhoTx[n][i] = rho[i];
+                        directMacroUTx[n][i] = directMacroVelocityFromState(rho[i], y[i]);
+                    }
+                }
+//END OF MACRO SIM
+                buildDirectMacroTravelTimeHistory();
+            }
+
+            function stepDirectMacro() {
+                const n = clamp(Math.floor(t / DIRECT_MACRO_DT), 0, DIRECT_MACRO_NT);
+                if (directMacroRhoTx.length > 0) directMacroRho = directMacroRhoTx[n];
+                if (directMacroUTx.length > 0) directMacroU = directMacroUTx[n];
+                if (directMacroTTx.length > 0) directMacroTravelTime = directMacroTTx[n];
+            }
+
+            function directMacroFieldAt(arrayField, xMeters) {
+                const x = clamp(xMeters, 0, DIRECT_MACRO_LX - 1e-9);
+                const xi = x / DIRECT_MACRO_DX;
+                const i0 = clamp(Math.floor(xi), 0, DIRECT_MACRO_NX - 1);
+                const i1 = clamp(i0 + 1, 0, DIRECT_MACRO_NX - 1);
+                const a = xi - i0;
+                return arrayField[i0] * (1 - a) + arrayField[i1] * a;
+            }
+
+            function connectedDirectMacroTravelTime(xMeters, lane) {
+                if (wraparoundEnabled) {
+                    // Macro domain is [0, 2L]. Top lane: macro pos = xMeters.
+                    // Bottom lane: screen x=0 → macro 2L (TT=0), screen x=L → macro L.
+                    const fieldX = lane === "top" ? xMeters : DIRECT_MACRO_LX - xMeters;
+                    return directMacroFieldAt(directMacroTravelTime, fieldX);
+                }
+                // Open mode: domain [0, L], destination at x=L (Nx-1).
+                const fieldX = lane === "top" ? xMeters : Math.max(0, ROAD_LENGTH_M - xMeters);
+                const baseValue = directMacroFieldAt(directMacroTravelTime, fieldX);
+                if (lane !== "top") return baseValue;
+                const topBoundary = directMacroFieldAt(directMacroTravelTime, ROAD_LENGTH_M);
+                const botBoundary = directMacroFieldAt(directMacroTravelTime, 0);
+                return baseValue + Math.max(botBoundary - topBoundary, 0);
+            }
+
+            function resetDirectMacroFromMicroInitial() {
+                recomputeDirectMacroFieldsFromInitial();
+                directMacroRho = directMacroRhoTx[0];
+                directMacroU = directMacroUTx[0];
+                directMacroTravelTime = directMacroTTx[0];
+            }
+
+            // ---------- Drawing ----------
+            function drawStage() {
+                ctx.fillStyle = "#315d2f";
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                ctx.fillStyle = "#f0f0f0";
+                ctx.font = "14px Arial";
+                ctx.textAlign = "left";
+                ctx.textBaseline = "top";
+                ctx.fillText("Scale: 1 m = 2 px  [→ top lane, ← bottom lane]", 14, 8);
+                ctx.fillStyle = MICRO_ROAD_SURFACE_COLOR;
+                ctx.fillRect(0, roadYTop - laneHeight / 2, canvas.width, laneHeight);
+                drawDashedCenterStripe(ctx, roadYTop + laneHeight / 2, canvas.width, stripeHeight, MICRO_ROAD_SURFACE_COLOR);
+                ctx.fillStyle = MICRO_ROAD_SURFACE_COLOR;
+                ctx.fillRect(0, roadYBot - laneHeight / 2, canvas.width, laneHeight);
+                ctx.strokeStyle = "#111111"; ctx.lineWidth = 2;
+                ctx.strokeRect(0, roadYTop - laneHeight / 2, canvas.width, laneHeight * 2 + stripeHeight);
+                const lScreenPx = (l < ROAD_LENGTH_M ? l : RING_LENGTH_M - l) * PX_PER_M;
+                const lLaneTop = l < ROAD_LENGTH_M ? roadYTop - laneHeight / 2 : roadYBot - laneHeight / 2;
+                ctx.strokeStyle = "#ff4d4d"; ctx.lineWidth = 3;
+                ctx.beginPath();
+                ctx.moveTo(lScreenPx, lLaneTop);
+                ctx.lineTo(lScreenPx, lLaneTop + laneHeight);
+                ctx.stroke();
+            }
+
+            function drawTfFieldStage() {
+                tfCtx.fillStyle = "#315d2f";
+                tfCtx.fillRect(0, 0, tfCanvas.width, tfCanvas.height);
+                tfCtx.fillStyle = "#ffffff";
+                tfCtx.fillRect(0, tfRoadYTop - laneHeight / 2, tfCanvas.width, laneHeight);
+                drawDashedCenterStripe(tfCtx, tfRoadYTop + laneHeight / 2, tfCanvas.width, stripeHeight, MICRO_ROAD_SURFACE_COLOR);
+                tfCtx.fillStyle = "#ffffff";
+                tfCtx.fillRect(0, tfRoadYBot - laneHeight / 2, tfCanvas.width, laneHeight);
+                tfCtx.strokeStyle = "#111111"; tfCtx.lineWidth = 2;
+                tfCtx.strokeRect(0, tfRoadYTop - laneHeight / 2, tfCanvas.width, laneHeight * 2 + stripeHeight);
+                tfCtx.fillStyle = "#f0f0f0";
+                tfCtx.font = "15px Arial"; tfCtx.textAlign = "left"; tfCtx.textBaseline = "top";
+                tfCtx.fillText("Micro TF Map T_F(t, x)", 14, 8);
+            }
+
+            function drawTfFieldAndScale() {
+                const topYt = tfRoadYTop - laneHeight / 2;
+                const botYt = tfRoadYBot - laneHeight / 2;
+                lastTfLegendRange = { min: TF_COLOR_SCALE_MIN, max: TF_COLOR_SCALE_MAX };
+                for (let xPx = 0; xPx < tfCanvas.width; xPx += TF_RENDER_STRIP_PX) {
+                    const xM = xPx / PX_PER_M;
+                    const rawTop = connectedMicroTravelTime(t, xM, "top");
+                    const rawBot = connectedMicroTravelTime(t, xM, "bot");
+                    const tvTop = Number.isFinite(rawTop) ? clamp(rawTop, TF_COLOR_SCALE_MIN, TF_COLOR_SCALE_MAX) : TF_COLOR_SCALE_MAX;
+                    const tvBot = Number.isFinite(rawBot) ? clamp(rawBot, TF_COLOR_SCALE_MIN, TF_COLOR_SCALE_MAX) : TF_COLOR_SCALE_MAX;
+                    tfCtx.fillStyle = tfColor(tvTop, TF_COLOR_SCALE_MIN, TF_COLOR_SCALE_MAX);
+                    tfCtx.fillRect(xPx, topYt, TF_RENDER_STRIP_PX, laneHeight);
+                    tfCtx.fillStyle = tfColor(tvBot, TF_COLOR_SCALE_MIN, TF_COLOR_SCALE_MAX);
+                    tfCtx.fillRect(xPx, botYt, TF_RENDER_STRIP_PX, laneHeight);
+                }
+
+                const legendX = 30;
+                const legendY = tfRoadYBot + laneHeight / 2 + 22;
+                const legendW = 340;
+                const legendH = 18;
+                const grad = tfCtx.createLinearGradient(legendX, 0, legendX + legendW, 0);
+                grad.addColorStop(0, tfColor(TF_COLOR_SCALE_MAX, TF_COLOR_SCALE_MIN, TF_COLOR_SCALE_MAX));
+                grad.addColorStop(1, tfColor(TF_COLOR_SCALE_MIN, TF_COLOR_SCALE_MIN, TF_COLOR_SCALE_MAX));
+                tfCtx.fillStyle = grad;
+                tfCtx.fillRect(legendX, legendY, legendW, legendH);
+                tfCtx.strokeStyle = "#f0f0f0";
+                tfCtx.lineWidth = 1;
+                tfCtx.strokeRect(legendX, legendY, legendW, legendH);
+                tfCtx.fillStyle = "#f0f0f0";
+                tfCtx.font = "14px Arial";
+                tfCtx.textAlign = "left";
+                tfCtx.textBaseline = "bottom";
+                tfCtx.fillText("T_F(t, x) scale", legendX, legendY - 6);
+                tfCtx.textBaseline = "top";
+                tfCtx.fillText(`Longer ${TF_COLOR_SCALE_MAX.toFixed(1)} s`, legendX, legendY + legendH + 4);
+                tfCtx.textAlign = "right";
+                tfCtx.fillText(`Shorter ${TF_COLOR_SCALE_MIN.toFixed(1)} s`, legendX + legendW, legendY + legendH + 4);
+            }
+
+            function drawDensityFieldStage() {
+                densityCtx.fillStyle = "#315d2f";
+                densityCtx.fillRect(0, 0, densityCanvas.width, densityCanvas.height);
+                densityCtx.fillStyle = "#ffffff";
+                densityCtx.fillRect(0, densityRoadYTop - laneHeight / 2, densityCanvas.width, laneHeight);
+                drawDashedCenterStripe(densityCtx, densityRoadYTop + laneHeight / 2, densityCanvas.width, stripeHeight, MICRO_ROAD_SURFACE_COLOR);
+                densityCtx.fillStyle = "#ffffff";
+                densityCtx.fillRect(0, densityRoadYBot - laneHeight / 2, densityCanvas.width, laneHeight);
+                densityCtx.strokeStyle = "#111111"; densityCtx.lineWidth = 2;
+                densityCtx.strokeRect(0, densityRoadYTop - laneHeight / 2, densityCanvas.width, laneHeight * 2 + stripeHeight);
+                densityCtx.fillStyle = "#f0f0f0";
+                densityCtx.font = "15px Arial"; densityCtx.textAlign = "left"; densityCtx.textBaseline = "top";
+                densityCtx.fillText("Micro Density Map rho(t, x)", 14, 8);
+            }
+
+            function drawDensityFieldAndScale() {
+                const topYd = densityRoadYTop - laneHeight / 2;
+                const botYd = densityRoadYBot - laneHeight / 2;
+                let allRho = [];
+                for (let xPx = 0; xPx < densityCanvas.width; xPx += DENSITY_RENDER_STRIP_PX) {
+                    const xM = xPx / PX_PER_M;
+                    const rt = clamp(displayDensity(RHO_F(t, xM, "top") || 0), DENSITY_SCALE_MIN, DENSITY_SCALE_MAX);
+                    const rb = clamp(displayDensity(RHO_F(t, xM, "bot") || 0), DENSITY_SCALE_MIN, DENSITY_SCALE_MAX);
+                    densityCtx.fillStyle = densityColor(rt, DENSITY_SCALE_MIN, DENSITY_SCALE_MAX);
+                    densityCtx.fillRect(xPx, topYd, DENSITY_RENDER_STRIP_PX, laneHeight);
+                    densityCtx.fillStyle = densityColor(rb, DENSITY_SCALE_MIN, DENSITY_SCALE_MAX);
+                    densityCtx.fillRect(xPx, botYd, DENSITY_RENDER_STRIP_PX, laneHeight);
+                    allRho.push(rt, rb);
+                }
+                lastDensityRange = { min: Math.min(...allRho), max: Math.max(...allRho) };
+
+                const legendX = 30;
+                const legendY = densityRoadYBot + laneHeight / 2 + 22;
+                const legendW = 340;
+                const legendH = 18;
+                const grad = densityCtx.createLinearGradient(legendX, 0, legendX + legendW, 0);
+                grad.addColorStop(0, densityColor(DENSITY_SCALE_MIN, DENSITY_SCALE_MIN, DENSITY_SCALE_MAX));
+                grad.addColorStop(1, densityColor(DENSITY_SCALE_MAX, DENSITY_SCALE_MIN, DENSITY_SCALE_MAX));
+                densityCtx.fillStyle = grad;
+                densityCtx.fillRect(legendX, legendY, legendW, legendH);
+                densityCtx.strokeStyle = "#f0f0f0";
+                densityCtx.lineWidth = 1;
+                densityCtx.strokeRect(legendX, legendY, legendW, legendH);
+                densityCtx.fillStyle = "#f0f0f0";
+                densityCtx.font = "14px Arial";
+                densityCtx.textAlign = "left";
+                densityCtx.textBaseline = "bottom";
+                densityCtx.fillText("rho(t, x) scale", legendX, legendY - 6);
+                densityCtx.textBaseline = "top";
+                densityCtx.fillText(`Low ${DENSITY_SCALE_MIN.toFixed(3)} veh/m`, legendX, legendY + legendH + 4);
+                densityCtx.textAlign = "right";
+                densityCtx.fillText(`High ${DENSITY_SCALE_MAX.toFixed(3)} veh/m`, legendX + legendW, legendY + legendH + 4);
+            }
+
+            function drawDirectMacroDensityStage() {
+                directMacroDensityCtx.fillStyle = "#315d2f";
+                directMacroDensityCtx.fillRect(0, 0, directMacroDensityCanvas.width, directMacroDensityCanvas.height);
+                directMacroDensityCtx.fillStyle = "#ffffff";
+                directMacroDensityCtx.fillRect(0, densityRoadYTop - laneHeight / 2, directMacroDensityCanvas.width, laneHeight);
+                drawDashedCenterStripe(directMacroDensityCtx, densityRoadYTop + laneHeight / 2, directMacroDensityCanvas.width, stripeHeight, MICRO_ROAD_SURFACE_COLOR);
+                directMacroDensityCtx.fillStyle = "#ffffff";
+                directMacroDensityCtx.fillRect(0, densityRoadYBot - laneHeight / 2, directMacroDensityCanvas.width, laneHeight);
+                directMacroDensityCtx.strokeStyle = "#111111"; directMacroDensityCtx.lineWidth = 2;
+                directMacroDensityCtx.strokeRect(0, densityRoadYTop - laneHeight / 2, directMacroDensityCanvas.width, laneHeight * 2 + stripeHeight);
+                directMacroDensityCtx.fillStyle = "#f0f0f0";
+                directMacroDensityCtx.font = "15px Arial"; directMacroDensityCtx.textAlign = "left"; directMacroDensityCtx.textBaseline = "top";
+                directMacroDensityCtx.fillText("Direct Macro Density (ARZ)", 14, 8);
+            }
+
+            function drawDirectMacroDensityAndScale() {
+                const yTop = densityRoadYTop - laneHeight / 2;
+                const yBot = densityRoadYBot - laneHeight / 2;
+                const stripPx = DENSITY_RENDER_STRIP_PX;
+                const rhoTop = [], rhoBot = [];
+
+                for (let xPx = 0; xPx < directMacroDensityCanvas.width; xPx += stripPx) {
+                    const xM = xPx / PX_PER_M;
+                    const xRev = Math.max(0, DIRECT_MACRO_LX - xM);
+                    rhoTop.push(clamp(displayDensity(directMacroFieldAt(directMacroRho, xM)), DENSITY_SCALE_MIN, DENSITY_SCALE_MAX));
+                    rhoBot.push(clamp(displayDensity(directMacroFieldAt(directMacroRho, xRev)), DENSITY_SCALE_MIN, DENSITY_SCALE_MAX));
+                }
+
+                directMacroDensityRange = {
+                    min: Math.min(Math.min(...rhoTop), Math.min(...rhoBot)),
+                    max: Math.max(Math.max(...rhoTop), Math.max(...rhoBot))
+                };
+
+                let idx = 0;
+                for (let xPx = 0; xPx < directMacroDensityCanvas.width; xPx += stripPx) {
+                    directMacroDensityCtx.fillStyle = densityColor(rhoTop[idx], DENSITY_SCALE_MIN, DENSITY_SCALE_MAX);
+                    directMacroDensityCtx.fillRect(xPx, yTop, stripPx, laneHeight);
+                    directMacroDensityCtx.fillStyle = densityColor(rhoBot[idx], DENSITY_SCALE_MIN, DENSITY_SCALE_MAX);
+                    directMacroDensityCtx.fillRect(xPx, yBot, stripPx, laneHeight);
+                    idx++;
+                }
+
+                const legendX = 30;
+                const legendY = densityRoadYBot + laneHeight / 2 + 22;
+                const legendW = 340;
+                const legendH = 18;
+                const grad = directMacroDensityCtx.createLinearGradient(legendX, 0, legendX + legendW, 0);
+                grad.addColorStop(0, densityColor(DENSITY_SCALE_MIN, DENSITY_SCALE_MIN, DENSITY_SCALE_MAX));
+                grad.addColorStop(1, densityColor(DENSITY_SCALE_MAX, DENSITY_SCALE_MIN, DENSITY_SCALE_MAX));
+                directMacroDensityCtx.fillStyle = grad;
+                directMacroDensityCtx.fillRect(legendX, legendY, legendW, legendH);
+                directMacroDensityCtx.strokeStyle = "#f0f0f0";
+                directMacroDensityCtx.lineWidth = 1;
+                directMacroDensityCtx.strokeRect(legendX, legendY, legendW, legendH);
+                directMacroDensityCtx.fillStyle = "#f0f0f0";
+                directMacroDensityCtx.font = "14px Arial";
+                directMacroDensityCtx.textAlign = "left";
+                directMacroDensityCtx.textBaseline = "bottom";
+                directMacroDensityCtx.fillText("rho(t, x) scale", legendX, legendY - 6);
+                directMacroDensityCtx.textBaseline = "top";
+                directMacroDensityCtx.fillText(`Low ${DENSITY_SCALE_MIN.toFixed(3)} veh/m`, legendX, legendY + legendH + 4);
+                directMacroDensityCtx.textAlign = "right";
+                directMacroDensityCtx.fillText(`High ${DENSITY_SCALE_MAX.toFixed(3)} veh/m`, legendX + legendW, legendY + legendH + 4);
+            }
+
+            function drawDirectMacroTravelTimeStage() {
+                directMacroTravelTimeCtx.fillStyle = "#315d2f";
+                directMacroTravelTimeCtx.fillRect(0, 0, directMacroTravelTimeCanvas.width, directMacroTravelTimeCanvas.height);
+                directMacroTravelTimeCtx.fillStyle = "#ffffff";
+                directMacroTravelTimeCtx.fillRect(0, tfRoadYTop - laneHeight / 2, directMacroTravelTimeCanvas.width, laneHeight);
+                drawDashedCenterStripe(directMacroTravelTimeCtx, tfRoadYTop + laneHeight / 2, directMacroTravelTimeCanvas.width, stripeHeight, MICRO_ROAD_SURFACE_COLOR);
+                directMacroTravelTimeCtx.fillStyle = "#ffffff";
+                directMacroTravelTimeCtx.fillRect(0, tfRoadYBot - laneHeight / 2, directMacroTravelTimeCanvas.width, laneHeight);
+                directMacroTravelTimeCtx.strokeStyle = "#111111"; directMacroTravelTimeCtx.lineWidth = 2;
+                directMacroTravelTimeCtx.strokeRect(0, tfRoadYTop - laneHeight / 2, directMacroTravelTimeCanvas.width, laneHeight * 2 + stripeHeight);
+
+                directMacroTravelTimeCtx.fillStyle = "#f0f0f0";
+                directMacroTravelTimeCtx.font = "15px Arial";
+                directMacroTravelTimeCtx.textAlign = "left";
+                directMacroTravelTimeCtx.textBaseline = "top";
+                directMacroTravelTimeCtx.fillText("Direct Macro Travel Time (backward from x = L)", 14, 8);
+            }
+
+            function drawDirectMacroTravelTimeAndScale() {
+                const yTop = tfRoadYTop - laneHeight / 2;
+                const yBot = tfRoadYBot - laneHeight / 2;
+                const stripPx = TF_RENDER_STRIP_PX;
+                const ttTop = [], ttBot = [];
+
+                for (let xPx = 0; xPx < directMacroTravelTimeCanvas.width; xPx += stripPx) {
+                    const xM = xPx / PX_PER_M;
+                    ttTop.push(clamp(connectedDirectMacroTravelTime(xM, "top"), TF_COLOR_SCALE_MIN, TF_COLOR_SCALE_MAX));
+                    ttBot.push(clamp(connectedDirectMacroTravelTime(xM, "bot"), TF_COLOR_SCALE_MIN, TF_COLOR_SCALE_MAX));
+                }
+
+                const tfScaleMin = TF_COLOR_SCALE_MIN;
+                const tfScaleMax = TF_COLOR_SCALE_MAX;
+                directMacroTravelTimeRange = { min: tfScaleMin, max: tfScaleMax };
+
+                let idx = 0;
+                for (let xPx = 0; xPx < directMacroTravelTimeCanvas.width; xPx += stripPx) {
+                    directMacroTravelTimeCtx.fillStyle = tfColor(ttTop[idx], tfScaleMin, tfScaleMax);
+                    directMacroTravelTimeCtx.fillRect(xPx, yTop, stripPx, laneHeight);
+                    directMacroTravelTimeCtx.fillStyle = tfColor(ttBot[idx], tfScaleMin, tfScaleMax);
+                    directMacroTravelTimeCtx.fillRect(xPx, yBot, stripPx, laneHeight);
+                    idx++;
+                }
+
+                const legendX = 30;
+                const legendY = tfRoadYBot + laneHeight / 2 + 22;
+                const legendW = 340;
+                const legendH = 18;
+                const grad = directMacroTravelTimeCtx.createLinearGradient(legendX, 0, legendX + legendW, 0);
+                grad.addColorStop(0, tfColor(tfScaleMax, tfScaleMin, tfScaleMax));
+                grad.addColorStop(1, tfColor(tfScaleMin, tfScaleMin, tfScaleMax));
+                directMacroTravelTimeCtx.fillStyle = grad;
+                directMacroTravelTimeCtx.fillRect(legendX, legendY, legendW, legendH);
+                directMacroTravelTimeCtx.strokeStyle = "#f0f0f0";
+                directMacroTravelTimeCtx.lineWidth = 1;
+                directMacroTravelTimeCtx.strokeRect(legendX, legendY, legendW, legendH);
+                directMacroTravelTimeCtx.fillStyle = "#f0f0f0";
+                directMacroTravelTimeCtx.font = "14px Arial";
+                directMacroTravelTimeCtx.textAlign = "left";
+                directMacroTravelTimeCtx.textBaseline = "bottom";
+                directMacroTravelTimeCtx.fillText("T_F(t, x) scale", legendX, legendY - 6);
+                directMacroTravelTimeCtx.textBaseline = "top";
+                directMacroTravelTimeCtx.fillText(`Longer ${tfScaleMax.toFixed(1)} s`, legendX, legendY + legendH + 4);
+                directMacroTravelTimeCtx.textAlign = "right";
+                directMacroTravelTimeCtx.fillText(`Shorter ${tfScaleMin.toFixed(1)} s`, legendX + legendW, legendY + legendH + 4);
+            }
+
+            // microAtTop/Bot and macroAtTop/Bot: 4 lines total
+            function drawLineComparisonPlot(plotCtx, plotCanvas, title, yLabel, yMin, yMax, microAtTop, macroAtTop, microAtBot, macroAtBot) {
+                const padL = 72;
+                const padR = 20;
+                const padT = 26;
+                const padB = 40;
+                const maxPlotW = plotCanvas.width - padL - padR;
+                const targetPlotW = Math.round(canvas.width * 0.25);
+                const plotW = Math.min(maxPlotW, targetPlotW);
+                const plotH = plotCanvas.height - padT - padB;
+                const axisL = padL;
+                const axisR = axisL + plotW;
+                const axisT = padT;
+                const axisB = padT + plotH;
+
+                plotCtx.fillStyle = "#1f242a";
+                plotCtx.fillRect(0, 0, plotCanvas.width, plotCanvas.height);
+
+                plotCtx.strokeStyle = "#d8d8d8";
+                plotCtx.lineWidth = 1;
+                plotCtx.strokeRect(axisL, axisT, plotW, plotH);
+
+                const ySpan = Math.max(yMax - yMin, 1e-9);
+                const toYPx = (v) => axisT + plotH * (1 - (clamp(v, yMin, yMax) - yMin) / ySpan);
+
+                plotCtx.fillStyle = "#f0f0f0";
+                plotCtx.font = "14px Arial";
+                plotCtx.textAlign = "left";
+                plotCtx.textBaseline = "top";
+                plotCtx.fillText(title, 12, 6);
+
+                plotCtx.font = "11px Arial";
+                plotCtx.fillStyle = "#cfd8e3";
+                plotCtx.strokeStyle = "#6e7885";
+                plotCtx.lineWidth = 1;
+
+                const xTickCount = 8;
+                for (let k = 0; k <= xTickCount; k++) {
+                    const frac = k / xTickCount;
+                    const x = axisL + frac * plotW;
+                    const xVal = frac * ROAD_LENGTH_M;
+                    plotCtx.beginPath();
+                    plotCtx.moveTo(x, axisB);
+                    plotCtx.lineTo(x, axisB + 6);
+                    plotCtx.stroke();
+                    plotCtx.textAlign = "center";
+                    plotCtx.textBaseline = "top";
+                    plotCtx.fillText(`${xVal.toFixed(0)}`, x, axisB + 8);
+                }
+
+                const yTickCount = 5;
+                for (let k = 0; k <= yTickCount; k++) {
+                    const frac = k / yTickCount;
+                    const y = axisB - frac * plotH;
+                    const yVal = yMin + frac * (yMax - yMin);
+                    plotCtx.beginPath();
+                    plotCtx.moveTo(axisL - 6, y);
+                    plotCtx.lineTo(axisL, y);
+                    plotCtx.stroke();
+                    plotCtx.textAlign = "right";
+                    plotCtx.textBaseline = "middle";
+                    plotCtx.fillText(yVal.toFixed(2), axisL - 10, y);
+                }
+
+                plotCtx.font = "12px Arial";
+                plotCtx.fillStyle = "#f0f0f0";
+                plotCtx.textAlign = "center";
+                plotCtx.textBaseline = "top";
+                plotCtx.fillText("x (m)", axisL + plotW / 2, axisB + 24);
+
+                plotCtx.save();
+                plotCtx.translate(20, axisT + plotH / 2);
+                plotCtx.rotate(-Math.PI / 2);
+                plotCtx.textAlign = "center";
+                plotCtx.textBaseline = "top";
+                plotCtx.fillText(yLabel, 0, 0);
+                plotCtx.restore();
+
+                const drawLine = (fn, color) => {
+                    plotCtx.strokeStyle = color;
+                    plotCtx.lineWidth = 2;
+                    plotCtx.beginPath();
+                    for (let xPx = 0; xPx <= plotW; xPx += 3) {
+                        const xM = (xPx / plotW) * ROAD_LENGTH_M;
+                        const y = toYPx(fn(xM));
+                        if (xPx === 0) plotCtx.moveTo(axisL + xPx, y);
+                        else plotCtx.lineTo(axisL + xPx, y);
+                    }
+                    plotCtx.stroke();
+                };
+                drawLine(microAtTop, "#00cfff");
+                drawLine(macroAtTop, "#ff3f3f");
+                drawLine(microAtBot, "#39e75f");
+                drawLine(macroAtBot, "#ffd600");
+
+                const legendY = axisT + 6;
+                const legendItems = [
+                    ["#00cfff", "micro top"],
+                    ["#ff3f3f", "macro top"],
+                    ["#39e75f", "micro bot"],
+                    ["#ffd600", "macro bot"],
+                ];
+                legendItems.forEach(([color, label], i) => {
+                    plotCtx.fillStyle = color;
+                    plotCtx.fillRect(axisR + 24, legendY + i * 16, 22, 4);
+                    plotCtx.fillStyle = "#f0f0f0";
+                    plotCtx.textAlign = "left";
+                    plotCtx.fillText(label, axisR + 52, legendY + i * 16 - 4);
+                });
+            }
+
+            function drawDensityLineComparison() {
+                drawLineComparisonPlot(
+                    densityLineCompareCtx, densityLineCompareCanvas,
+                    "Density vs Position (Micro vs Macro)", "veh/m", DENSITY_SCALE_MIN, 0.1,
+                    (xM) => displayDensity(RHO_F(t, xM, "top")),
+                    (xM) => displayDensity(directMacroFieldAt(directMacroRho, xM)),
+                    (xM) => displayDensity(RHO_F(t, xM, "bot")),
+                    (xM) => displayDensity(directMacroFieldAt(directMacroRho, Math.max(0, DIRECT_MACRO_LX - xM)))
+                );
+            }
+
+            function drawTravelTimeLineComparison() {
+                drawLineComparisonPlot(
+                    travelTimeLineCompareCtx, travelTimeLineCompareCanvas,
+                    "Travel Time vs Position (Micro vs Macro)", "T (s)",
+                    TF_COLOR_SCALE_MIN, TF_COLOR_SCALE_MAX,
+                    (xM) => connectedMicroTravelTime(t, xM, "top"),
+                    (xM) => connectedDirectMacroTravelTime(xM, "top"),
+                    (xM) => connectedMicroTravelTime(t, xM, "bot"),
+                    (xM) => connectedDirectMacroTravelTime(xM, "bot")
+                );
+            }
+
+            // ---------- Initial micro population ----------
+            let initialPositions = buildInitialPositions();
+            let initialSpeeds = buildEquilibriumInitialSpeeds(initialPositions);
+
+            let cars = initialPositions.map((xPos, i) =>
+                new Car(i + 1, xPos, hslColor(i, initialPositions.length), initialSpeeds[i], 0)
+            );
+
+            let nextCarNumber = cars.length + 1;
+            let cumulativeArrived = 0;
+            let cumulativeSpawned = cars.length;
+            let endlessScheduleIndex = 0;
+            let endlessPendingCars = [];
+
+            let t = 0;
+            let stepIndex = 0;
+            let paused = false;
+            let lastTimestamp = null;
+            let accumulatedRealTime = 0;
+
+            // ---------- Eulerian distance metric ----------
+            let e_d = 0;
+
+            function computeTimestepDensityGapSq() {
+                const kdeGrids = computeMicroKdeGrids();
+                let sumSq = 0;
+
+                for (let i = 0; i < KDE_NX; i++) {
+                    // Top lane: macro cell i covers [0,L], KDE top cell i covers [0,L]. ✓
+                    const diffTop = directMacroRho[i] - kdeGrids.top[i];
+                    sumSq += diffTop * diffTop;
+
+                    // Bottom lane: in wrap mode macro covers [0,2L] so bottom lane is
+                    // cells [NX-1..NX/2] (reversed). KDE bot cell i covers screen [0,L].
+                    // Screen x=0 → ring 2L → macro cell NX-1; screen x=L → macro cell NX/2.
+                    const macroIdxBot = wraparoundEnabled ? (DIRECT_MACRO_NX - 1 - i) : i;
+                    const diffBot = directMacroRho[macroIdxBot] - kdeGrids.bot[i];
+                    sumSq += diffBot * diffBot;
+                }
+                return sumSq;
+            }
+
+            // ---------- Lagrangian distance metric ----------
+            let l_d = 0;
+
+            // Advance a position by one DT using the current macro velocity field.
+            // xRing is in ring space; returns advanced position in ring space.
+            function macroAdvanceOne(xRing) {
+                // In wrap mode DIRECT_MACRO_LX = 2L = RING_LENGTH_M so xRing maps
+                // directly. In open mode DIRECT_MACRO_LX = L = ROAD_LENGTH_M.
+                const xMac = clamp(xRing, 0, DIRECT_MACRO_LX - 1e-9);
+                const v = directMacroFieldAt(directMacroU, xMac);
+                let xNew = xRing + v * DT;
+                if (wraparoundEnabled) {
+                    xNew = ((xNew % RING_LENGTH_M) + RING_LENGTH_M) % RING_LENGTH_M;
+                }
+                return xNew;
+            }
+
+            // Given pre-step car positions (Map: number -> x) and the macro-advanced
+            // versions of those positions (Map: number -> x), compare to current car
+            // positions and return sum of squared differences.
+            function computeOneStepLagrangianGapSq(prePositions, macroAdvanced) {
+                let sumSq = 0;
+                let nCars = 0;
+                for (const car of cars) {
+                    if (!macroAdvanced.has(car.number)) continue;
+                    let diff = car.x - macroAdvanced.get(car.number);
+                    if (wraparoundEnabled) {
+                        const hl = RING_LENGTH_M / 2;
+                        if (diff >  hl) diff -= RING_LENGTH_M;
+                        if (diff < -hl) diff += RING_LENGTH_M;
+                    }
+                    sumSq += diff * diff;
+                    nCars++;
+                }
+                // Normalise by car count so nl_d is comparable across different car counts.
+                // Reference is 10 cars.
+                const carFactor = nCars > 0 ? 10 / nCars : 1;
+                return sumSq * carFactor;
+            }
+
+            function applyMode(nextMode) {
+                simulationMode = nextMode;
+                wraparoundEnabled = simulationMode === MODE_WRAP;
+                setupMacroDimensions();
+            }
+
+            function resetSimulation() {
+                applyMode(simulationMode);
+                l = computeDestinationMeters();
+
+                t = 0;
+                stepIndex = 0;
+                paused = false;
+                lastTimestamp = null;
+                accumulatedRealTime = 0;
+
+                tfSnapshots.length = 0;
+                densitySnapshots.length = 0;
+                lastTfLegendRange = { min: 0, max: 1 };
+                lastDensityRange = { min: 0, max: 0 };
+                e_d = 0;
+                l_d = 0;
+
+                cumulativeArrived = 0;
+                endlessScheduleIndex = 0;
+                endlessPendingCars = [];
+                pauseBtn.textContent = "Pause";
+
+                cars.length = 0;
+                for (let i = 0; i < initialPositions.length; i++) {
+                    const car = new Car(i + 1, initialPositions[i], hslColor(i, initialPositions.length), initialSpeeds[i], 0);
+                    car.hasArrived = false;
+                    car.remainingTravelTime = TF_CAP_SECONDS;
+                    cars.push(car);
+                }
+
+                nextCarNumber = cars.length + 1;
+                cumulativeSpawned = cars.length;
+
+                endlessInflowSchedule = buildEndlessInflowSchedule(DIRECT_MACRO_TMAX);
+                
+
+                recomputeTravelTimesByForecast();
+                snapshotTravelTimeField();
+                snapshotDensityField();
+                buildMacroLookupTables();
+                resetDirectMacroFromMicroInitial();
+            }
+
+            resetSimulation();
+            modeSelect.value = simulationMode;
+
+            modeSelect.addEventListener("change", () => {
+                simulationMode = modeSelect.value;
+                resetSimulation();
+            });
+
+            restartBtn.addEventListener("click", () => {
+                V0 = parseFloat(vfSlider.value);
+                DIRECT_MACRO_MAX_SPEED = V0;
+                const rhoJam = parseFloat(rhoMaxSlider.value);
+                MIN_SPACING_M = Math.max(0.5, 1 / rhoJam - CAR_LENGTH_M);
+                DIRECT_MACRO_RHO_JAM = 1 / (CAR_LENGTH_M + MIN_SPACING_M);
+                initialPositions = buildInitialPositions();
+                initialSpeeds = buildEquilibriumInitialSpeeds(initialPositions);
+                resetSimulation();
+            });
+
+            pauseBtn.addEventListener("click", () => {
+                paused = !paused;
+                pauseBtn.textContent = paused ? "Resume" : "Pause";
+                if (!paused) lastTimestamp = null;
+            });
+
+            // ---------- Main step ----------
+            function stepSimulation() {
+                if (stepIndex >= timeSteps.length - 1) {
+                    t = Tmax;
+                    paused = true;
+                    return;
+                }
+
+                // Capture pre-step positions and macro-advance them using directMacroU
+                // at the current (old) time — before stepDirectMacro() updates it.
+                const lagMacroAdvanced = new Map();
+                for (const car of cars) {
+                    if (!car.hasArrived) {
+                        lagMacroAdvanced.set(car.number, macroAdvanceOne(car.x));
+                    }
+                }
+
+                stepIndex += 1;
+                t = timeSteps[stepIndex];
+
+                if (wraparoundEnabled) {
+                    const activeCars = cars.filter((car) => !car.hasArrived);
+                    const ordered = [...activeCars].sort((a, b) => a.x - b.x);
+                    const spaces = new Map();
+
+                    for (let i = 0; i < ordered.length; i++) {
+                        const car = ordered[i];
+                        const leader = ordered[(i + 1) % ordered.length];
+                        const rawGap = (leader.x - car.x + RING_LENGTH_M) % RING_LENGTH_M;
+                        const space = Math.max(rawGap - CAR_LENGTH_M, MIN_SPACING_M);
+                        spaces.set(car.number, space);
+                    }
+
+                    for (const car of activeCars) {
+                        car.updateFollowing(DT, spaces.get(car.number));
+                    }
+
+                    if (ordered.length > 1) {
+                        const minGap = CAR_LENGTH_M + MIN_SPACING_M;
+                        const unwrappedX = new Map();
+                        for (const car of ordered) unwrappedX.set(car.number, car.x);
+
+                        for (let pass = 0; pass < 3; pass++) {
+                            for (let i = ordered.length - 1; i >= 0; i--) {
+                                const car = ordered[i];
+                                const leader = i === ordered.length - 1 ? ordered[0] : ordered[i + 1];
+                                const leaderX =
+                                    i === ordered.length - 1
+                                        ? unwrappedX.get(leader.number) + RING_LENGTH_M
+                                        : unwrappedX.get(leader.number);
+                                const maxAllowedX = leaderX - minGap;
+                                if (unwrappedX.get(car.number) > maxAllowedX) {
+                                    unwrappedX.set(car.number, maxAllowedX);
+                                    car.v = Math.min(car.v, leader.v);
+                                }
+                            }
+                        }
+
+                        for (const car of activeCars) {
+                            car.x = unwrappedX.get(car.number);
+                        }
+                    }
+
+                    for (const car of activeCars) {
+                        car.x = ((car.x % RING_LENGTH_M) + RING_LENGTH_M) % RING_LENGTH_M;
+                        car.remainingTravelTime = Math.max(car.remainingTravelTime - DT, 0);
+                    }
+
+                    if (stepIndex % ETA_REFRESH_INTERVAL_STEPS === 0) {
+                        recomputeTravelTimesByForecast();
+                    }
+
+                    snapshotTravelTimeField();
+                    snapshotDensityField();
+                    stepDirectMacro();
+                    e_d += computeTimestepDensityGapSq();
+                    l_d += computeOneStepLagrangianGapSq(null, lagMacroAdvanced);
+                    return;
+                }
+
+                const activeCars = cars.filter((car) => !car.hasArrived);
+                if (activeCars.length === 0 && simulationMode !== MODE_ENDLESS) {
+                    paused = true;
+                    return;
+                }
+
+                if (activeCars.length > 0) {
+                    const ordered = [...activeCars].sort((a, b) => a.x - b.x);
+                    const leader = ordered[ordered.length - 1];
+
+                    for (let i = ordered.length - 2; i >= 0; i--) {
+                        const car = ordered[i];
+                        const carLeader = ordered[i + 1];
+                        const rawGap = Math.max(carLeader.x - car.x - CAR_LENGTH_M, 0);
+                        const spaceToLeader = Math.max(rawGap, MIN_SPACING_M);
+                        car.updateFollowing(DT, spaceToLeader);
+
+                        const maxAllowedX = carLeader.x - CAR_LENGTH_M - MIN_SPACING_M;
+                        if (car.x > maxAllowedX) {
+                            car.x = maxAllowedX;
+                            car.v = Math.min(car.v, carLeader.v);
+                        }
+                        if (car.x < 0) {
+                            car.x = 0;
+                            car.v = 0;
+                        }
+                    }
+
+                    leader.updateLeader(DT);
+
+                    for (let i = ordered.length - 2; i >= 0; i--) {
+                        const car = ordered[i];
+                        const carLeader = ordered[i + 1];
+                        const maxAllowedX = carLeader.x - CAR_LENGTH_M - MIN_SPACING_M;
+                        if (car.x > maxAllowedX) {
+                            car.x = maxAllowedX;
+                            car.v = Math.min(car.v, carLeader.v);
+                        }
+                        if (car.x < 0) {
+                            car.x = 0;
+                            car.v = 0;
+                        }
+                    }
+
+                    for (const car of activeCars) {
+                        if (car.x >= l) {
+                            car.hasArrived = true;
+                            car.v = 0;
+                            car.a = 0;
+                            car.remainingTravelTime = 0;
+                        }
+                    }
+                }
+
+                for (let i = cars.length - 1; i >= 0; i--) {
+                    if (cars[i].hasArrived) {
+                        cars.splice(i, 1);
+                        cumulativeArrived += 1;
+                    }
+                }
+
+                if (simulationMode === MODE_ENDLESS) {
+                    while (
+                        endlessScheduleIndex < endlessInflowSchedule.length &&
+                        endlessInflowSchedule[endlessScheduleIndex].time <= t
+                    ) {
+                        endlessPendingCars.push(endlessInflowSchedule[endlessScheduleIndex]);
+                        endlessScheduleIndex += 1;
+                    }
+
+                    while (endlessPendingCars.length > 0 && canInsertCarAtUpstream()) {
+                        const nextArrival = endlessPendingCars.shift();
+                        spawnOneEndlessCar(nextArrival.speed);
+                    }
+                }
+
+                for (const car of cars) {
+                    car.remainingTravelTime = car.hasArrived
+                        ? 0
+                        : Math.max(car.remainingTravelTime - DT, 0);
+                }
+
+                if (stepIndex % ETA_REFRESH_INTERVAL_STEPS === 0) {
+                    recomputeTravelTimesByForecast();
+                }
+
+                snapshotTravelTimeField();
+                snapshotDensityField();
+                stepDirectMacro();
+                e_d += computeTimestepDensityGapSq();
+                l_d += computeOneStepLagrangianGapSq(null, lagMacroAdvanced);
+            }
+
+            function loop(timestamp) {
+                if (lastTimestamp === null) lastTimestamp = timestamp;
+
+                const elapsedRealSec = Math.max((timestamp - lastTimestamp) / 1000, 0);
+                lastTimestamp = timestamp;
+
+                if (!paused) {
+                    accumulatedRealTime += elapsedRealSec * parseFloat(speedSlider.value);
+                    accumulatedRealTime = Math.min(accumulatedRealTime, DT * MAX_STEPS_PER_FRAME);
+                    while (!paused && accumulatedRealTime >= DT) {
+                        stepSimulation();
+                        accumulatedRealTime -= DT;
+                    }
+                }
+
+                drawStage();
+                for (const car of cars) car.draw();
+
+                drawTfFieldStage();
+                drawTfFieldAndScale();
+                drawDensityFieldStage();
+                drawDensityFieldAndScale();
+
+                drawDirectMacroDensityStage();
+                drawDirectMacroDensityAndScale();
+                drawDirectMacroTravelTimeStage();
+                drawDirectMacroTravelTimeAndScale();
+
+                drawDensityLineComparison();
+                drawTravelTimeLineComparison();
+
+                const arrivedCount = wraparoundEnabled ? 0 : cumulativeArrived;
+                const activeCount = cars.length;
+                const totalCount = wraparoundEnabled
+                    ? cars.length
+                    : (simulationMode === MODE_ENDLESS ? cumulativeSpawned : initialPositions.length);
+
+                const status = paused ? (t >= Tmax ? "paused at Tmax" : "all cars arrived") : "running";
+                const mode = simulationMode === MODE_WRAP
+                    ? "wraparound"
+                    : (simulationMode === MODE_FINITE ? "finite-open" : "endless-random-open");
+
+                // ne_d: mean squared density error per cell per timestep
+                //   e_d sums over (Tmax/DT) steps × 2×200 cells (200 top + 200 bot, always).
+                const ne_d = e_d * DT / Tmax / 400;
+
+                // nl_d: 10-car normalised mean squared velocity error
+                //   raw l_d = n_steps × 10 × DT² × <Δv²>, so divide by n_steps and DT²
+                //   = l_d / (Tmax/DT) / DT² = l_d / (Tmax × DT)
+                const nl_d = l_d / (Tmax * DT);
+
+                hud.textContent =
+                    `mode = ${mode} | status = ${status} | t = ${t.toFixed(1)} s / ${Tmax} s | dt = ${DT} s | cars active/arrived/total = ${activeCount}/${arrivedCount}/${totalCount} | min spacing = ${MIN_SPACING_M} m | l = ${l.toFixed(1)} m | T_F range: ${lastTfLegendRange.min.toFixed(1)}-${lastTfLegendRange.max.toFixed(1)} s | rho range: ${lastDensityRange.min.toFixed(3)}-${lastDensityRange.max.toFixed(3)} veh/m | e_d = ${e_d.toFixed(6)} | ne_d = ${ne_d.toExponential(3)} | l_d = ${l_d.toFixed(4)} | nl_d = ${nl_d.toFixed(4)}`;
+
+                const edEl = document.getElementById("edDisplay");
+                const edFinal = (t >= Tmax) ? "  [FINAL]" : "";
+                edEl.innerHTML =
+                    `e_d = ${e_d.toFixed(4)}  &nbsp; ne_d = ${ne_d.toExponential(3)} (veh/m)²/cell/step  <span style="font-size:12px;color:#aaa;">[mean sq. density err per cell per timestep]</span>${edFinal}<br>` +
+                    `l_d = ${l_d.toFixed(4)} m²  &nbsp; nl_d = ${nl_d.toFixed(4)} (m/s)²  <span style="font-size:12px;color:#aaa;">[10-car mean sq. velocity err, independent of T/DT/N]</span>${edFinal}`;
+
+                requestAnimationFrame(loop);
+            }
+
+            requestAnimationFrame(loop);
+        </script>
+    </body>
+</html>
