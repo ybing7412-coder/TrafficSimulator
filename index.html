@@ -140,13 +140,14 @@
 
 <header>
     <h1>Traffic Simulator</h1>
-    <p>Mathematical traffic-flow models — micro and macro — interactive and configurable.
-       Built in the browser with vector graphics and real physical units.</p>
+    <p>Interactive implementations of mathematical traffic-flow models — both macroscopic continuum
+       models governed by partial differential equations, and microscopic car-following models
+       that simulate individual vehicles. Built in the browser with vector graphics and real physical units.</p>
 </header>
 
 <main>
 
-    <h2 class="section-title">Macroscopic Models  —  continuum PDEs</h2>
+    <h2 class="section-title">Macroscopic Models  —  continuum partial differential equations</h2>
 
     <div class="card-grid">
 
@@ -156,11 +157,13 @@
                 <span class="tag macro">Macro</span>
                 <span class="tag order1">1st Order</span>
             </div>
-            <h3>LWR  —  Kinematic Wave</h3>
-            <p>Lighthill–Whitham–Richards model. Density evolves as a scalar
-               conservation law with Greenshields equilibrium.
-               Includes travel-time heatmap and passive micro-car visualisation.</p>
-            <div class="math">∂ρ/∂t + ∂(ρ·v_e(ρ))/∂x = 0</div>
+            <h3>LWR  —  Lighthill–Whitham–Richards Kinematic Wave</h3>
+            <p>First-order macroscopic model in which traffic density evolves as a scalar
+               conservation law. Vehicle speed is determined entirely by local density via a
+               Greenshields equilibrium relation — no driver anticipation.
+               Godunov finite-volume scheme on a ring road.
+               Includes a density heatmap, travel-time heatmap, and passive micro-car tracer visualisation.</p>
+            <div class="math">∂ρ/∂t + ∂(ρ · v_e(ρ))/∂x = 0</div>
         </a>
 
         <!-- ARZ -->
@@ -169,16 +172,18 @@
                 <span class="tag macro">Macro</span>
                 <span class="tag order2">2nd Order</span>
             </div>
-            <h3>ARZ  —  Aw–Rascle–Zhang</h3>
-            <p>Second-order model with driver anticipation. Avoids the
-               wrong-way traffic instability of Payne–Whitham.
-               Rusanov scheme with operator-split relaxation.</p>
-            <div class="math">∂ρ/∂t + ∂(ρv)/∂x = 0<br>∂y/∂t + ∂(yv)/∂x = ρ(v_e−v)/τ</div>
+            <h3>ARZ  —  Aw–Rascle–Zhang Second-Order Model</h3>
+            <p>Second-order macroscopic model that adds a driver-anticipation pressure term,
+               correcting the wrong-way traffic instability present in the earlier Payne–Whitham model.
+               Solved with a Rusanov (local Lax–Friedrichs) finite-volume scheme and
+               operator-split relaxation toward equilibrium speed.
+               Includes density and travel-time heatmaps with passive micro-car tracer visualisation.</p>
+            <div class="math">∂ρ/∂t + ∂(ρv)/∂x = 0<br>∂y/∂t + ∂(yv)/∂x = ρ(v_e(ρ) − v) / τ</div>
         </a>
 
     </div>
 
-    <h2 class="section-title">Microscopic Models  —  individual vehicles</h2>
+    <h2 class="section-title">Microscopic Models  —  individual vehicles  ★ most interactive</h2>
 
     <div class="card-grid">
 
@@ -187,11 +192,17 @@
             <div class="card-tag">
                 <span class="tag micro">Micro</span>
             </div>
-            <h3>OVM / IDM  —  Car-following</h3>
-            <p>Optimal Velocity Model and Intelligent Driver Model.
-               Individual vehicles react to headway and relative speed.
-               Live real-time ring-road simulation.</p>
-            <div class="math">ẍ_n = a·f(x_{n+1}−x_n, ẋ_n, ẋ_{n+1})</div>
+            <h3>OVM / IDM  —  Car-Following</h3>
+            <p>The richest simulator on this page. Each vehicle is simulated individually using either
+               the Optimal Velocity Model (Bando et al., 1995) or the Intelligent Driver Model
+               (Treiber et al., 2000). Vehicles react to the gap and relative speed of the car ahead.</p>
+            <p style="margin-top:8px">Features multi-lane roads with MOBIL lane-changing,
+               draggable obstacles (cones, barriers, traffic lights), configurable per-lane inflow,
+               and five road configurations: ring road, circular ring road, straight road,
+               straight road with on-ramp, and straight road with off-ramp.</p>
+            <p style="margin-top:8px; color:#e0a040; font-size:12px">
+               Note: when switching road configuration, press Restart to apply the change.</p>
+            <div class="math">ẍ_n = a · f(x_{n+1} − x_n,  ẋ_n,  ẋ_{n+1})</div>
         </a>
 
     </div>
