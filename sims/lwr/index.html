@@ -88,6 +88,8 @@
             height: 14px;
         }
 
+        select { flex: 1; background: #222; color: #e0e0e0; border: 1px solid #3a3a3a; border-radius: 4px; padding: 4px 6px; font-size: 12px; }
+
         .val {
             font-size: 11px;
             color: #e0e0e0;
@@ -178,6 +180,8 @@
             display: flex;
             flex-direction: column;
             gap: 6px;
+            width: max-content;
+            min-width: 100%;
         }
 
         .cv-title {
@@ -186,7 +190,7 @@
             margin: 4px 0 1px;
         }
 
-        canvas { border: 1px solid #222; display: block; }
+        canvas { border: 1px solid #222; display: block; align-self: flex-start; }
     </style>
 </head>
 <body>
@@ -231,6 +235,14 @@
             </div>
         </div>
         <div class="ctrl">
+            <label>Road shape</label>
+            <div class="ctrl-row">
+                <select id="roadTypeSelect">
+                    <option value="ring">Ring road</option>
+                </select>
+            </div>
+        </div>
+        <div class="ctrl">
             <label>Simulation time  Tmax  (s)</label>
             <div class="ctrl-row">
                 <input type="range" id="tmaxSlider" min="60" max="1800" step="30" value="600">
@@ -260,8 +272,8 @@
         <div class="ctrl">
             <label>Jam density  ρ<sub>max</sub>  (veh/m)</label>
             <div class="ctrl-row">
-                <input type="range" id="rhomaxSlider" min="0.04" max="0.30" step="0.005" value="0.143">
-                <span class="val" id="rhomaxVal">0.143 v/m</span>
+                <input type="range" id="rhomaxSlider" min="0.30" max="0.50" step="0.005" value="0.400">
+                <span class="val" id="rhomaxVal">0.400 v/m</span>
             </div>
         </div>
     </section>
@@ -269,33 +281,75 @@
     <!-- Initial Conditions -->
     <section>
         <h2>Initial Density  ρ₀(x)</h2>
-        <p class="note">ρ₀(x) = ρ<sub>bg</sub> + A · exp(−(x − μ)² / 2σ²)</p>
         <div class="ctrl">
-            <label>Peak position  μ  (m)</label>
+            <label>Wave type</label>
             <div class="ctrl-row">
-                <input type="range" id="muSlider" min="0" max="2500" step="25" value="1250">
-                <span class="val" id="muVal">1250 m</span>
+                <select id="icType">
+                    <option value="gaussian">Gaussian bump</option>
+                    <option value="sawtooth">Sawtooth</option>
+                </select>
             </div>
         </div>
-        <div class="ctrl">
-            <label>Std deviation  σ  (m)</label>
-            <div class="ctrl-row">
-                <input type="range" id="sigmaSlider" min="50" max="800" step="10" value="300">
-                <span class="val" id="sigmaVal">300 m</span>
+        <div id="gaussianPanel">
+            <p class="note">ρ₀(x) = ρ<sub>bg</sub> + A · exp(−(x − μ)² / 2σ²)</p>
+            <div class="ctrl">
+                <label>Peak position  μ  (m)</label>
+                <div class="ctrl-row">
+                    <input type="range" id="muSlider" min="0" max="2500" step="25" value="1250">
+                    <span class="val" id="muVal">1250 m</span>
+                </div>
+            </div>
+            <div class="ctrl">
+                <label>Std deviation  σ  (m)</label>
+                <div class="ctrl-row">
+                    <input type="range" id="sigmaSlider" min="50" max="800" step="10" value="300">
+                    <span class="val" id="sigmaVal">300 m</span>
+                </div>
+            </div>
+            <div class="ctrl">
+                <label>Amplitude  A  (veh/m)</label>
+                <div class="ctrl-row">
+                    <input type="range" id="ampSlider" min="0.005" max="0.130" step="0.005" value="0.080">
+                    <span class="val" id="ampVal">0.080 v/m</span>
+                </div>
+            </div>
+            <div class="ctrl">
+                <label>Background  ρ<sub>bg</sub>  (veh/m)</label>
+                <div class="ctrl-row">
+                    <input type="range" id="bgSlider" min="0.001" max="0.050" step="0.001" value="0.005">
+                    <span class="val" id="bgVal">0.005 v/m</span>
+                </div>
             </div>
         </div>
-        <div class="ctrl">
-            <label>Amplitude  A  (veh/m)</label>
-            <div class="ctrl-row">
-                <input type="range" id="ampSlider" min="0.005" max="0.130" step="0.005" value="0.080">
-                <span class="val" id="ampVal">0.080 v/m</span>
+        <div id="sawtoothPanel" style="display:none">
+            <p class="note">ρ₀(x) = ρ<sub>bg</sub> + A · ((x − φ) mod P) / P</p>
+            <div class="ctrl">
+                <label>Background  ρ<sub>bg</sub>  (veh/m)</label>
+                <div class="ctrl-row">
+                    <input type="range" id="stBgSlider" min="0.001" max="0.200" step="0.001" value="0.020">
+                    <span class="val" id="stBgVal">0.020 v/m</span>
+                </div>
             </div>
-        </div>
-        <div class="ctrl">
-            <label>Background  ρ<sub>bg</sub>  (veh/m)</label>
-            <div class="ctrl-row">
-                <input type="range" id="bgSlider" min="0.001" max="0.050" step="0.001" value="0.005">
-                <span class="val" id="bgVal">0.005 v/m</span>
+            <div class="ctrl">
+                <label>Amplitude  A  (veh/m)</label>
+                <div class="ctrl-row">
+                    <input type="range" id="stAmpSlider" min="0.005" max="0.200" step="0.005" value="0.080">
+                    <span class="val" id="stAmpVal">0.080 v/m</span>
+                </div>
+            </div>
+            <div class="ctrl">
+                <label>Period  P  (m)</label>
+                <div class="ctrl-row">
+                    <input type="range" id="stPeriodSlider" min="100" max="2000" step="50" value="500">
+                    <span class="val" id="stPeriodVal">500 m</span>
+                </div>
+            </div>
+            <div class="ctrl">
+                <label>Phase offset  φ  (m)</label>
+                <div class="ctrl-row">
+                    <input type="range" id="stPhaseSlider" min="0" max="2000" step="25" value="0">
+                    <span class="val" id="stPhaseVal">0 m</span>
+                </div>
             </div>
         </div>
     </section>
@@ -306,8 +360,8 @@
         <div class="ctrl">
             <label>Density colour scale max  (veh/m)</label>
             <div class="ctrl-row">
-                <input type="range" id="rhoScaleSlider" min="0.02" max="0.30" step="0.005" value="0.15">
-                <span class="val" id="rhoScaleVal">0.150 v/m</span>
+                <input type="range" id="rhoScaleSlider" min="0.05" max="0.50" step="0.005" value="0.400">
+                <span class="val" id="rhoScaleVal">0.400 v/m</span>
             </div>
         </div>
         <div class="ctrl">
@@ -334,22 +388,13 @@
 <!-- ── Simulation script ──────────────────────────────────────────────────── -->
 <script type="module">
 import { ColorScale }   from '../../src/core/ColorScale.js';
-import { drawRoadBg, drawHeatmap, drawCar, drawLegend, drawLinePlot }
+import { drawRoadBg, drawHeatmap, drawCar, drawLegend, drawLinePlot, makeGeo, PX_PER_M, LANE_H, STRIPE_H, CAR_L_PX, CAR_W_PX }
     from '../../src/core/Renderer.js';
 import { LWRModel }     from '../../src/macro/LWR.js';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
-const PX_PER_M   = 2;    // road heatmap resolution
-const CAR_SCALE  = 5;    // px per metre for micro-car rendering
-const CAR_L_M    = 4.5;  // car body length [m]
-const CAR_W_M    = 2.0;  // car body width  [m]
-const CAR_L_PX   = CAR_L_M * CAR_SCALE;
-const CAR_W_PX   = CAR_W_M * CAR_SCALE;
-
-// Road geometry (pixels)
-const GEO = { laneH: 32, stripeH: 6, roadYTop: 52, roadYBot: 52 + 32 + 6 };
-const CV_ROAD_H = GEO.roadYBot + GEO.laneH / 2 + 58;  // canvas height for road panels
-const CV_PLOT_H = 230;                                   // canvas height for line plots
+const CV_PLOT_H = 320;
+let geo = makeGeo(1, 'ring'); // rebuilt each run
 
 // ─── UI helpers ───────────────────────────────────────────────────────────────
 const get     = (id)       => parseFloat(document.getElementById(id).value);
@@ -368,6 +413,10 @@ const setText = (id, text) => { document.getElementById(id).textContent = text; 
     ['sigmaSlider',    'sigmaVal',    v => `${v} m`],
     ['ampSlider',      'ampVal',      v => `${parseFloat(v).toFixed(3)} v/m`],
     ['bgSlider',       'bgVal',       v => `${parseFloat(v).toFixed(3)} v/m`],
+    ['stBgSlider',     'stBgVal',     v => `${parseFloat(v).toFixed(3)} v/m`],
+    ['stAmpSlider',    'stAmpVal',    v => `${parseFloat(v).toFixed(3)} v/m`],
+    ['stPeriodSlider', 'stPeriodVal', v => `${v} m`],
+    ['stPhaseSlider',  'stPhaseVal',  v => `${v} m`],
     ['rhoScaleSlider', 'rhoScaleVal', v => `${parseFloat(v).toFixed(3)} v/m`],
     ['ttScaleSlider',  'ttScaleVal',  v => `${v} s`],
 ].forEach(([sid, lid, fmt]) => {
@@ -387,31 +436,36 @@ document.getElementById('lxSlider').addEventListener('input', () => {
     }
 });
 
+document.getElementById('icType').addEventListener('change', e => {
+    document.getElementById('gaussianPanel').style.display = e.target.value === 'gaussian' ? '' : 'none';
+    document.getElementById('sawtoothPanel').style.display = e.target.value === 'sawtooth' ? '' : 'none';
+});
+
+
 // ─── Canvas management ────────────────────────────────────────────────────────
 let cvs = {};   // { density, travelTime, micro, densityPlot, travelTimePlot }
 
 function rebuildCanvases(lx) {
-    const W   = Math.round(lx * PX_PER_M);
+    const roadType = document.getElementById('roadTypeSelect').value;
+    geo = makeGeo(1, roadType);
+    const W  = Math.round(lx * PX_PER_M);
+    const Wp = Math.round(W / 5);
     const area = document.getElementById('canvases');
     area.innerHTML = '';
 
-    const mk = (id, h, label) => {
-        const d = document.createElement('div');
-        d.className = 'cv-title';
-        d.textContent = label;
-        area.appendChild(d);
+    const mk = (id, w, h) => {
         const c = document.createElement('canvas');
-        c.id = id; c.width = W; c.height = h;
+        c.id = id; c.width = w; c.height = h;
         area.appendChild(c);
         return c;
     };
 
     cvs = {
-        density:        mk('cvDensity',        CV_ROAD_H, ''),
-        travelTime:     mk('cvTravelTime',      CV_ROAD_H, ''),
-        micro:          mk('cvMicro',           CV_ROAD_H, ''),
-        densityPlot:    mk('cvDensityPlot',     CV_PLOT_H, ''),
-        travelTimePlot: mk('cvTravelTimePlot',  CV_PLOT_H, ''),
+        density:        mk('cvDensity',        W,  geo.canvasH),
+        travelTime:     mk('cvTravelTime',      W,  geo.canvasH),
+        micro:          mk('cvMicro',           W,  geo.canvasH),
+        densityPlot:    mk('cvDensityPlot',     Wp, CV_PLOT_H),
+        travelTimePlot: mk('cvTravelTimePlot',  Wp, CV_PLOT_H),
     };
 }
 
@@ -445,11 +499,22 @@ async function runSimulation() {
         rhoMax: get('rhomaxSlider'),
     });
 
-    const mu    = get('muSlider');
-    const sigma = get('sigmaSlider');
-    const amp   = get('ampSlider');
-    const bg    = get('bgSlider');
-    const ic    = x => bg + amp * Math.exp(-0.5 * ((x - mu) / sigma) ** 2);
+    const icType = document.getElementById('icType').value;
+    let ic;
+    if (icType === 'gaussian') {
+        const mu  = get('muSlider'),  sigma = get('sigmaSlider');
+        const amp = get('ampSlider'), bg    = get('bgSlider');
+        ic = x => bg + amp * Math.exp(-0.5 * ((x - mu) / sigma) ** 2);
+    } else {
+        const stBg     = get('stBgSlider');
+        const stAmp    = get('stAmpSlider');
+        const stPeriod = get('stPeriodSlider');
+        const stPhase  = get('stPhaseSlider');
+        ic = x => {
+            const t = (((x - stPhase) % stPeriod) + stPeriod) % stPeriod;
+            return Math.max(0, stBg + stAmp * (t / stPeriod));
+        };
+    }
 
     document.getElementById('progress-bar').style.width = '25%';
     await tick();
@@ -502,15 +567,16 @@ function render(fi) {
         sim.connectedTopTT(data.T_top_tx, data.T_bot_tx, fi, i));
     const ttBot = data.T_bot_tx[fi];
 
-    const legY = GEO.roadYBot + GEO.laneH / 2 + 18;
+    const { numLanes, roadType, legendY } = geo;
+    const mkTop = a => Array.from({ length: numLanes }, () => a);
+    const mkBot = a => roadType === 'ring' ? Array.from({ length: numLanes }, () => a) : null;
 
     // ── Density heatmap ────────────────────────────────────────────────────────
     {
         const ctx = cvs.density.getContext('2d');
-        drawRoadBg(ctx, cvs.density,
-            'Density  ρ(t, x)    [top lane → ,  bottom lane ←]', GEO);
-        drawHeatmap(ctx, rhoTop, rhoBot, rhoCFn, GEO, PX_PER_M, currentLx);
-        drawLegend(ctx, 30, legY, 280, 15, 'ρ  (veh/m)',
+        drawRoadBg(ctx, cvs.density, 'Density  ρ(t, x)', geo);
+        drawHeatmap(ctx, mkTop(rhoTop), mkBot(rhoBot), rhoCFn, geo, PX_PER_M, currentLx);
+        drawLegend(ctx, 30, legendY, 280, 15, 'ρ  (veh/m)',
             '0', `${rhoScale.toFixed(3)}`, rhoCFn, 0, rhoScale);
     }
 
@@ -518,54 +584,44 @@ function render(fi) {
     {
         const ctx = cvs.travelTime.getContext('2d');
         drawRoadBg(ctx, cvs.travelTime,
-            'Travel Time  T(t, x)  to ring destination', GEO);
-        drawHeatmap(ctx, ttTop, ttBot, ttCFn, GEO, PX_PER_M, currentLx);
-        drawLegend(ctx, 30, legY, 280, 15, 'T  (s)',
+            roadType === 'ring' ? 'Travel Time  T(t, x)  to ring destination' : 'Travel Time  T(t, x)', geo);
+        drawHeatmap(ctx, mkTop(ttTop), mkBot(ttBot), ttCFn, geo, PX_PER_M, currentLx);
+        drawLegend(ctx, 30, legendY, 280, 15, 'T  (s)',
             '0 s', `${ttScale} s`, ttCFn, 0, ttScale);
     }
 
     // ── Micro car view ─────────────────────────────────────────────────────────
     {
         const ctx  = cvs.micro.getContext('2d');
-        drawRoadBg(ctx, cvs.micro,
-            'Micro Vehicles  (passive tracers advected by LWR speed field)', GEO);
+        drawRoadBg(ctx, cvs.micro, 'Micro Vehicles  (passive tracers advected by LWR speed field)', geo);
 
         for (const car of micro[fi]) {
-            const onTop    = car.s < currentLx;
-            const screenX  = onTop ? car.s : (2 * currentLx - car.s);
-            const laneY    = onTop ? GEO.roadYTop : GEO.roadYBot;
-            drawCar(ctx, screenX * PX_PER_M, laneY, CAR_L_PX, CAR_W_PX, onTop);
+            const onTop   = car.s < currentLx;
+            if (roadType === 'straight' && !onTop) continue;
+            const screenX = onTop ? car.s : (2 * currentLx - car.s);
+            for (let l = 0; l < numLanes; l++) {
+                const cy = roadType === 'ring'
+                    ? (onTop ? geo.topLaneY[l] : geo.botLaneY[l])
+                    : geo.topLaneY[l];
+                drawCar(ctx, screenX * PX_PER_M, cy, CAR_L_PX, CAR_W_PX, onTop);
+            }
         }
     }
 
     // ── Density line plot ──────────────────────────────────────────────────────
     {
         const ctx = cvs.densityPlot.getContext('2d');
-        drawLinePlot(ctx, cvs.densityPlot,
-            'Density Profile  ρ(x, t)',
-            'ρ  (veh/m)', 0, rhoScale, currentLx,
-            [
-                { label: 'top lane →', color: '#4ec3ff',
-                  values: Array.from(rhoTop) },
-                { label: 'bot lane ←', color: '#ff9f59',
-                  values: Array.from(rhoBot).reverse() },
-            ]
-        );
+        const rhoDS = [{ label: 'top lane →', color: '#4ec3ff', values: Array.from(rhoTop) }];
+        if (roadType === 'ring') rhoDS.push({ label: 'bot lane ←', color: '#ff9f59', values: Array.from(rhoBot).reverse() });
+        drawLinePlot(ctx, cvs.densityPlot, 'Density Profile  ρ(x, t)', 'ρ  (veh/m)', 0, rhoScale, currentLx, rhoDS);
     }
 
     // ── Travel-time line plot ──────────────────────────────────────────────────
     {
         const ctx = cvs.travelTimePlot.getContext('2d');
-        drawLinePlot(ctx, cvs.travelTimePlot,
-            'Travel-Time Profile  T(x, t)',
-            'T  (s)', 0, ttScale, currentLx,
-            [
-                { label: 'top lane →', color: '#ffb347',
-                  values: ttTop },
-                { label: 'bot lane ←', color: '#ff6b6b',
-                  values: Array.from(ttBot).reverse() },
-            ]
-        );
+        const ttDS = [{ label: 'top lane →', color: '#ffb347', values: ttTop }];
+        if (roadType === 'ring') ttDS.push({ label: 'bot lane ←', color: '#ff6b6b', values: Array.from(ttBot).reverse() });
+        drawLinePlot(ctx, cvs.travelTimePlot, 'Travel-Time Profile  T(x, t)', 'T  (s)', 0, ttScale, currentLx, ttDS);
     }
 
     // Time display

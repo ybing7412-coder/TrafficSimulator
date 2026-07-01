@@ -1,0 +1,484 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>ARZ Traffic Simulator</title>
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: "Segoe UI", Arial, sans-serif; font-size: 14px; background: #111; color: #e0e0e0; height: 100vh; overflow: hidden; display: flex; flex-direction: column; }
+        .app-header { display: flex; align-items: center; gap: 16px; padding: 0 18px; height: 46px; background: #1c1c1c; border-bottom: 1px solid #2e2e2e; flex-shrink: 0; }
+        .app-header a { color: #5db8e8; text-decoration: none; font-size: 13px; }
+        .app-header h1 { font-size: 15px; font-weight: 600; color: #f4f4f4; }
+        .app-header .sub { font-size: 12px; color: #777; }
+        .layout { display: flex; flex: 1; overflow: hidden; }
+        .sidebar { width: 286px; flex-shrink: 0; background: #181818; border-right: 1px solid #2e2e2e; overflow-y: auto; display: flex; flex-direction: column; }
+        .sidebar section { padding: 13px 15px; border-bottom: 1px solid #242424; }
+        .sidebar h2 { font-size: 10px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: #e8a840; margin-bottom: 10px; }
+        .ctrl { margin-bottom: 9px; }
+        .ctrl:last-child { margin-bottom: 0; }
+        .ctrl label { display: block; font-size: 12px; color: #999; margin-bottom: 3px; }
+        .ctrl-row { display: flex; align-items: center; gap: 7px; }
+        input[type="range"] { flex: 1; accent-color: #e8a840; cursor: pointer; height: 14px; }
+        select { flex: 1; background: #222; color: #e0e0e0; border: 1px solid #3a3a3a; border-radius: 4px; padding: 4px 6px; font-size: 12px; }
+        .val { font-size: 11px; color: #e0e0e0; min-width: 76px; text-align: right; font-variant-numeric: tabular-nums; }
+        .btn { display: inline-flex; align-items: center; justify-content: center; gap: 5px; padding: 6px 12px; border: none; border-radius: 4px; font-size: 13px; font-family: inherit; cursor: pointer; transition: background 0.13s; }
+        .btn-primary { background: #7a5010; color: #fff; }
+        .btn-primary:hover:not(:disabled) { background: #b07020; }
+        .btn-primary:disabled { background: #2a2a1e; color: #665; cursor: default; }
+        .btn-secondary { background: #292929; color: #ddd; }
+        .btn-secondary:hover:not(:disabled) { background: #363636; }
+        .btn-secondary:disabled { color: #555; cursor: default; }
+        .btn-row { display: flex; gap: 7px; flex-wrap: wrap; }
+        #timeDisplay { font-size: 12px; color: #999; margin-top: 5px; font-variant-numeric: tabular-nums; }
+        #runBtn { width: calc(100% - 30px); margin: 14px 15px; padding: 10px; font-size: 14px; }
+        .viz-area { flex: 1; overflow: auto; display: flex; flex-direction: column; }
+        #progress { height: 3px; background: #1a1a1a; flex-shrink: 0; }
+        #progress-bar { height: 100%; width: 0%; background: #e8a840; transition: width 0.12s; }
+        #hud { font-size: 11px; color: #8a9a95; font-family: "Consolas","Courier New",monospace; line-height: 1.55; padding: 6px 12px; background: #161616; border-bottom: 1px solid #222; flex-shrink: 0; white-space: pre; }
+        #canvases { padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; width: max-content; min-width: 100%; }
+        .cv-title { font-size: 11px; color: #555; margin: 4px 0 1px; }
+        canvas { border: 1px solid #222; display: block; align-self: flex-start; }
+    </style>
+</head>
+<body>
+
+<header class="app-header">
+    <a href="../../index.html">← All Sims</a>
+    <h1>ARZ Traffic Model</h1>
+    <span class="sub">Aw–Rascle–Zhang · 2nd-order macroscopic · ring road · Rusanov scheme</span>
+</header>
+
+<div class="layout">
+<aside class="sidebar">
+
+    <section>
+        <h2>Playback</h2>
+        <div class="btn-row" style="margin-bottom:9px">
+            <button id="playBtn"    class="btn btn-secondary" disabled>▶ Play</button>
+            <button id="restartBtn" class="btn btn-secondary" disabled>⟳ Restart</button>
+        </div>
+        <div class="ctrl">
+            <label>Speed multiplier</label>
+            <div class="ctrl-row">
+                <input type="range" id="speedSlider" min="0.1" max="20" step="0.1" value="2">
+                <span class="val" id="speedVal">2.0×</span>
+            </div>
+        </div>
+        <div id="timeDisplay">t = —</div>
+    </section>
+
+    <section>
+        <h2>Road Configuration</h2>
+        <div class="ctrl">
+            <label>Road length  Lx  (m)</label>
+            <div class="ctrl-row">
+                <input type="range" id="lxSlider" min="500" max="2500" step="100" value="2500">
+                <span class="val" id="lxVal">2500 m</span>
+            </div>
+        </div>
+        <div class="ctrl">
+            <label>Road shape</label>
+            <div class="ctrl-row">
+                <select id="roadTypeSelect">
+                    <option value="ring">Ring road</option>
+                </select>
+            </div>
+        </div>
+        <div class="ctrl">
+            <label>Simulation time  Tmax  (s)</label>
+            <div class="ctrl-row">
+                <input type="range" id="tmaxSlider" min="30" max="300" step="10" value="120">
+                <span class="val" id="tmaxVal">120 s</span>
+            </div>
+        </div>
+        <div class="ctrl">
+            <label>Spatial cells  Nx</label>
+            <div class="ctrl-row">
+                <input type="range" id="nxSlider" min="100" max="500" step="50" value="300">
+                <span class="val" id="nxVal">300</span>
+            </div>
+        </div>
+    </section>
+
+    <section>
+        <h2>ARZ Model</h2>
+        <div class="ctrl">
+            <label>Free-flow speed  v<sub>f</sub>  (m/s)</label>
+            <div class="ctrl-row">
+                <input type="range" id="vfSlider" min="5" max="50" step="1" value="30">
+                <span class="val" id="vfVal">30 m/s</span>
+            </div>
+        </div>
+        <div class="ctrl">
+            <label>Jam density  ρ<sub>max</sub>  (veh/m)</label>
+            <div class="ctrl-row">
+                <input type="range" id="rhomaxSlider" min="0.30" max="0.50" step="0.005" value="0.400">
+                <span class="val" id="rhomaxVal">0.400 veh/m</span>
+            </div>
+        </div>
+        <div class="ctrl">
+            <label>Relaxation time  τ  (s)</label>
+            <div class="ctrl-row">
+                <input type="range" id="tauSlider" min="1" max="60" step="1" value="20">
+                <span class="val" id="tauVal">20 s</span>
+            </div>
+        </div>
+        <div class="ctrl">
+            <label>Pressure exponent  γ</label>
+            <div class="ctrl-row">
+                <input type="range" id="gammaSlider" min="0.5" max="3" step="0.1" value="1">
+                <span class="val" id="gammaVal">1.0</span>
+            </div>
+        </div>
+    </section>
+
+    <section>
+        <h2>Initial Conditions</h2>
+        <div class="ctrl">
+            <label>Wave type</label>
+            <div class="ctrl-row">
+                <select id="icType">
+                    <option value="gaussian">Gaussian bump</option>
+                    <option value="sawtooth">Sawtooth</option>
+                </select>
+            </div>
+        </div>
+        <div id="gaussianPanel">
+            <div class="ctrl">
+                <label>Gaussian centre  μ  (m)</label>
+                <div class="ctrl-row">
+                    <input type="range" id="muSlider" min="0" max="2500" step="25" value="1250">
+                    <span class="val" id="muVal">1250 m</span>
+                </div>
+            </div>
+            <div class="ctrl">
+                <label>Gaussian width  σ  (m)</label>
+                <div class="ctrl-row">
+                    <input type="range" id="sigmaSlider" min="50" max="800" step="10" value="300">
+                    <span class="val" id="sigmaVal">300 m</span>
+                </div>
+            </div>
+            <div class="ctrl">
+                <label>Bump amplitude  (veh/m)</label>
+                <div class="ctrl-row">
+                    <input type="range" id="ampSlider" min="0.005" max="0.130" step="0.005" value="0.080">
+                    <span class="val" id="ampVal">0.080</span>
+                </div>
+            </div>
+            <div class="ctrl">
+                <label>Background density  (veh/m)</label>
+                <div class="ctrl-row">
+                    <input type="range" id="bgSlider" min="0.001" max="0.050" step="0.001" value="0.005">
+                    <span class="val" id="bgVal">0.005</span>
+                </div>
+            </div>
+        </div>
+        <div id="sawtoothPanel" style="display:none">
+            <div class="ctrl">
+                <label>Background  ρ<sub>bg</sub>  (veh/m)</label>
+                <div class="ctrl-row">
+                    <input type="range" id="stBgSlider" min="0.001" max="0.200" step="0.001" value="0.020">
+                    <span class="val" id="stBgVal">0.020</span>
+                </div>
+            </div>
+            <div class="ctrl">
+                <label>Amplitude  A  (veh/m)</label>
+                <div class="ctrl-row">
+                    <input type="range" id="stAmpSlider" min="0.005" max="0.200" step="0.005" value="0.080">
+                    <span class="val" id="stAmpVal">0.080</span>
+                </div>
+            </div>
+            <div class="ctrl">
+                <label>Period  (m)</label>
+                <div class="ctrl-row">
+                    <input type="range" id="stPeriodSlider" min="100" max="2000" step="50" value="500">
+                    <span class="val" id="stPeriodVal">500 m</span>
+                </div>
+            </div>
+            <div class="ctrl">
+                <label>Phase offset  (m)</label>
+                <div class="ctrl-row">
+                    <input type="range" id="stPhaseSlider" min="0" max="2000" step="25" value="0">
+                    <span class="val" id="stPhaseVal">0 m</span>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section>
+        <h2>Visualisation</h2>
+        <div class="ctrl">
+            <label>Density scale  max (veh/m)</label>
+            <div class="ctrl-row">
+                <input type="range" id="rhoScaleSlider" min="0.05" max="0.50" step="0.005" value="0.400">
+                <span class="val" id="rhoScaleVal">0.400</span>
+            </div>
+        </div>
+        <div class="ctrl">
+            <label>Travel-time scale  max (s)</label>
+            <div class="ctrl-row">
+                <input type="range" id="ttScaleSlider" min="30" max="600" step="10" value="200">
+                <span class="val" id="ttScaleVal">200 s</span>
+            </div>
+        </div>
+    </section>
+
+    <button id="runBtn" class="btn btn-primary">▶ Run Simulation</button>
+
+</aside>
+
+<div class="viz-area">
+    <div id="progress"><div id="progress-bar"></div></div>
+    <div id="hud">Ready — configure parameters and click Run.</div>
+    <div id="canvases"></div>
+</div>
+</div>
+
+<script type="module">
+import { ARZModel }   from '../../src/macro/ARZ.js';
+import { ColorScale } from '../../src/core/ColorScale.js';
+import { drawRoadBg, drawHeatmap, drawCar, drawLegend, drawLinePlot, makeGeo, PX_PER_M, LANE_H, STRIPE_H, CAR_L_PX, CAR_W_PX } from '../../src/core/Renderer.js';
+
+// ── Layout constants ──────────────────────────────────────────────────────────
+const CV_PLOT_H = 320;
+let geo = makeGeo(1, 'ring'); // rebuilt each run
+
+// ── Slider wiring ─────────────────────────────────────────────────────────────
+const sliders = [
+    ['lxSlider',       'lxVal',       v => `${+v} m`],
+    ['tmaxSlider',     'tmaxVal',     v => `${+v} s`],
+    ['nxSlider',       'nxVal',       v => `${+v}`],
+    ['vfSlider',       'vfVal',       v => `${+v} m/s`],
+    ['rhomaxSlider',   'rhomaxVal',   v => `${parseFloat(v).toFixed(3)} veh/m`],
+    ['tauSlider',      'tauVal',      v => `${+v} s`],
+    ['gammaSlider',    'gammaVal',    v => `${parseFloat(v).toFixed(1)}`],
+    ['muSlider',       'muVal',       v => `${+v} m`],
+    ['sigmaSlider',    'sigmaVal',    v => `${+v} m`],
+    ['ampSlider',      'ampVal',      v => `${parseFloat(v).toFixed(3)}`],
+    ['bgSlider',       'bgVal',       v => `${parseFloat(v).toFixed(3)}`],
+    ['stBgSlider',     'stBgVal',     v => `${parseFloat(v).toFixed(3)}`],
+    ['stAmpSlider',    'stAmpVal',    v => `${parseFloat(v).toFixed(3)}`],
+    ['stPeriodSlider', 'stPeriodVal', v => `${+v} m`],
+    ['stPhaseSlider',  'stPhaseVal',  v => `${+v} m`],
+    ['rhoScaleSlider', 'rhoScaleVal', v => `${parseFloat(v).toFixed(3)}`],
+    ['ttScaleSlider',  'ttScaleVal',  v => `${+v} s`],
+    ['speedSlider',    'speedVal',    v => `${parseFloat(v).toFixed(1)}×`],
+];
+sliders.forEach(([id, lbl, fmt]) => {
+    const el = document.getElementById(id);
+    const lb = document.getElementById(lbl);
+    el.addEventListener('input', () => { lb.textContent = fmt(el.value); });
+});
+
+const get    = id => parseFloat(document.getElementById(id).value);
+const getInt = id => parseInt(document.getElementById(id).value, 10);
+const setText = (id, t) => { document.getElementById(id).textContent = t; };
+
+document.getElementById('icType').addEventListener('change', e => {
+    document.getElementById('gaussianPanel').style.display  = e.target.value === 'gaussian' ? '' : 'none';
+    document.getElementById('sawtoothPanel').style.display  = e.target.value === 'sawtooth' ? '' : 'none';
+});
+
+
+// ── Canvas management ────────────────────────────────────────────────────────
+let cvs = {};
+
+function rebuildCanvases(lx) {
+    const roadType = document.getElementById('roadTypeSelect').value;
+    geo = makeGeo(1, roadType);
+    const W  = Math.round(lx * PX_PER_M);
+    const Wp = Math.round(W / 5);
+    const area = document.getElementById('canvases');
+    area.innerHTML = '';
+    const mk = (id, w, h) => {
+        const c = document.createElement('canvas');
+        c.id = id; c.width = w; c.height = h;
+        area.appendChild(c);
+        return c;
+    };
+    cvs = {
+        density:        mk('cvDensity',        W,  geo.canvasH),
+        travelTime:     mk('cvTravelTime',      W,  geo.canvasH),
+        micro:          mk('cvMicro',           W,  geo.canvasH),
+        densityPlot:    mk('cvDensityPlot',     Wp, CV_PLOT_H),
+        travelTimePlot: mk('cvTravelTimePlot',  Wp, CV_PLOT_H),
+    };
+}
+
+// ── Simulation state ─────────────────────────────────────────────────────────
+let sim    = null;
+let data   = null;
+let micro  = null;
+let frameIdx    = 0;
+let playing     = false;
+let displayTime = 0;
+let lastTs      = null;
+let currentLx   = 2500;
+
+function tick() { return new Promise(r => setTimeout(r, 10)); }
+
+async function runSimulation() {
+    document.getElementById('runBtn').disabled = true;
+    setText('hud', 'Computing…');
+    document.getElementById('progress-bar').style.width = '5%';
+    await tick();
+
+    currentLx = getInt('lxSlider');
+    rebuildCanvases(currentLx);
+
+    sim = new ARZModel({
+        Lx:     currentLx,
+        Nx:     getInt('nxSlider'),
+        Tmax:   get('tmaxSlider'),
+        vf:     get('vfSlider'),
+        rhoMax: get('rhomaxSlider'),
+        tau:    get('tauSlider'),
+        gamma:  get('gammaSlider'),
+    });
+
+    const icType = document.getElementById('icType').value;
+    let ic;
+    if (icType === 'gaussian') {
+        const mu  = get('muSlider'),  sigma = get('sigmaSlider');
+        const amp = get('ampSlider'), bg    = get('bgSlider');
+        ic = x => bg + amp * Math.exp(-0.5 * ((x - mu) / sigma) ** 2);
+    } else {
+        const stBg     = get('stBgSlider');
+        const stAmp    = get('stAmpSlider');
+        const stPeriod = get('stPeriodSlider');
+        const stPhase  = get('stPhaseSlider');
+        ic = x => {
+            const t = (((x - stPhase) % stPeriod) + stPeriod) % stPeriod;
+            return Math.max(0, stBg + stAmp * (t / stPeriod));
+        };
+    }
+
+    document.getElementById('progress-bar').style.width = '25%';
+    await tick();
+
+    data = sim.solve(ic);
+
+    document.getElementById('progress-bar').style.width = '75%';
+    await tick();
+
+    micro = sim.buildMicroCars(data.rhoTx, data.vTx, data.timeTx);
+
+    document.getElementById('progress-bar').style.width = '100%';
+
+    frameIdx    = 0;
+    displayTime = 0;
+    lastTs      = null;
+    playing     = true;
+
+    document.getElementById('playBtn').disabled    = false;
+    document.getElementById('restartBtn').disabled = false;
+    document.getElementById('playBtn').textContent = '⏸ Pause';
+    document.getElementById('runBtn').disabled     = false;
+
+    const steps = data.timeTx.length - 1;
+    setText('hud', `Solved — ${steps} adaptive steps, dt_avg = ${(sim.Tmax / steps).toFixed(4)} s`);
+}
+
+// ── Render ───────────────────────────────────────────────────────────────────
+function render(fi) {
+    if (!data || !micro) return;
+    const { Nx } = sim;
+    const { numLanes, roadType, legendY } = geo;
+
+    const rhoScale = get('rhoScaleSlider');
+    const ttScale  = get('ttScaleSlider');
+    const rhoCFn   = v => ColorScale.density(v, rhoScale);
+    const ttCFn    = v => ColorScale.travelTime(v, ttScale);
+
+    const rhoTop = data.rhoTx[fi].slice(0, Nx);
+    const rhoBot = data.rhoTx[fi].slice(Nx, 2 * Nx);
+    const ttTop  = Array.from({ length: Nx }, (_, i) =>
+        sim.connectedTopTT(data.T_top_tx, data.T_bot_tx, fi, i));
+    const ttBot  = data.T_bot_tx[fi];
+
+    // Helper: wrap one array into per-lane arrays (all lanes show the same data)
+    const mkTop = a => Array.from({ length: numLanes }, () => a);
+    const mkBot = a => roadType === 'ring' ? Array.from({ length: numLanes }, () => a) : null;
+
+    { const ctx = cvs.density.getContext('2d');
+      drawRoadBg(ctx, cvs.density, 'Density  ρ(t,x)', geo);
+      drawHeatmap(ctx, mkTop(rhoTop), mkBot(rhoBot), rhoCFn, geo, PX_PER_M, currentLx);
+      drawLegend(ctx, 30, legendY, 280, 15, 'ρ (veh/m)', '0', `${rhoScale.toFixed(3)}`, rhoCFn, 0, rhoScale); }
+
+    { const ctx = cvs.travelTime.getContext('2d');
+      drawRoadBg(ctx, cvs.travelTime, roadType === 'ring' ? 'Travel Time  T(t,x)  to ring destination' : 'Travel Time  T(t,x)', geo);
+      drawHeatmap(ctx, mkTop(ttTop), mkBot(ttBot), ttCFn, geo, PX_PER_M, currentLx);
+      drawLegend(ctx, 30, legendY, 280, 15, 'T (s)', '0', `${ttScale} s`, ttCFn, 0, ttScale); }
+
+    { const ctx = cvs.micro.getContext('2d');
+      drawRoadBg(ctx, cvs.micro, 'Micro vehicles (passive tracers)', geo);
+      for (const car of micro[fi]) {
+          const onTop   = car.s < currentLx;
+          if (roadType === 'straight' && !onTop) continue;
+          const screenX = onTop ? car.s : (2 * currentLx - car.s);
+          for (let l = 0; l < numLanes; l++) {
+              const cy = roadType === 'ring'
+                  ? (onTop ? geo.topLaneY[l] : geo.botLaneY[l])
+                  : geo.topLaneY[l];
+              drawCar(ctx, screenX * PX_PER_M, cy, CAR_L_PX, CAR_W_PX, onTop);
+          }
+      } }
+
+    { const ctx = cvs.densityPlot.getContext('2d');
+      const rhoDS = [{ label: 'top →', color: '#4ec3ff', values: Array.from(rhoTop) }];
+      if (roadType === 'ring') rhoDS.push({ label: 'bot ←', color: '#ff9f59', values: Array.from(rhoBot).reverse() });
+      drawLinePlot(ctx, cvs.densityPlot, 'Density Profile  ρ(x,t)', 'ρ (veh/m)', 0, rhoScale, currentLx, rhoDS); }
+
+    { const ctx = cvs.travelTimePlot.getContext('2d');
+      const ttDS = [{ label: 'top →', color: '#ffb347', values: ttTop }];
+      if (roadType === 'ring') ttDS.push({ label: 'bot ←', color: '#ff6b6b', values: Array.from(ttBot).reverse() });
+      drawLinePlot(ctx, cvs.travelTimePlot, 'Travel-Time Profile  T(x,t)', 'T (s)', 0, ttScale, currentLx, ttDS); }
+
+    setText('timeDisplay',
+        `t = ${data.timeTx[fi].toFixed(2)} s  /  ${sim.Tmax} s   ·   frame ${fi} / ${data.timeTx.length - 1}`);
+}
+
+// ── Animation loop ────────────────────────────────────────────────────────────
+function loop(ts) {
+    requestAnimationFrame(loop);
+    if (!data || !micro) return;
+
+    if (playing) {
+        if (lastTs === null) lastTs = ts;
+        const elapsed = Math.max((ts - lastTs) / 1000, 0);
+        lastTs = ts;
+        displayTime += elapsed * get('speedSlider');
+
+        const total = data.timeTx.length - 1;
+        while (frameIdx + 1 < total && data.timeTx[frameIdx + 1] <= displayTime) {
+            frameIdx++;
+        }
+        if (frameIdx >= total) {
+            playing = false;
+            document.getElementById('playBtn').textContent = '▶ Play';
+        }
+    } else {
+        lastTs = null;
+    }
+
+    render(frameIdx);
+}
+
+requestAnimationFrame(loop);
+
+document.getElementById('runBtn').addEventListener('click', runSimulation);
+
+document.getElementById('playBtn').addEventListener('click', () => {
+    if (!data) return;
+    playing = !playing;
+    document.getElementById('playBtn').textContent = playing ? '⏸ Pause' : '▶ Play';
+});
+
+document.getElementById('restartBtn').addEventListener('click', () => {
+    if (!data) return;
+    frameIdx = 0; displayTime = 0; lastTs = null; playing = true;
+    document.getElementById('playBtn').textContent = '⏸ Pause';
+});
+</script>
+</body>
+</html>

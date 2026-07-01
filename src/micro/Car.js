@@ -38,45 +38,54 @@ export class Car {
      * @param {number} leaderSpeed   Leader speed [m/s]
      * @param {boolean} isLeader     True if no car ahead (free-road behaviour)
      */
-    step(dt, spaceToLeader, leaderSpeed, isLeader = false) {
+    step(dt, spaceToLeader, leaderSpeed, isOverallLeader = false) {
         if (this.model === 'ovm') {
-            this._stepOVM(dt, spaceToLeader, isLeader);
+            this._stepOVM(dt, spaceToLeader, isOverallLeader);
         } else {
-            this._stepIDM(dt, spaceToLeader, leaderSpeed, isLeader);
+            this._stepIDM(dt, spaceToLeader, leaderSpeed, isOverallLeader);
         }
     }
 
     // ─── OVM ──────────────────────────────────────────────────────────────────
 
-    _stepOVM(dt, s, isLeader) {
-        const { r = 0.8, V0 = 30, m = 0.2, bf = 18 } = this.params;
-        const bClose = Math.max(5, 4 * Math.pow(this.v / 10, 2));
-
-        if (isLeader || s > 200) {
-            this.a = r * (V0 - this.v);
-        } else if (s < bClose) {
-            this.a = -0.9 * this.v;
-        } else {
-            const desired = V0 * (Math.tanh(m * (s - bf)) - Math.tanh(m * (bClose - bf)));
-            this.a = r * (desired - this.v);
-        }
+    _stepOVM(dt, s, isOverallLeader) {
+        this.a = this._ovmAcc(s, isOverallLeader);
         this.v = Math.max(0, this.v + this.a * dt);
         this.x += this.v * dt;
     }
 
+    _ovmAcc(s, isOverallLeader) {
+        const { r = 0.8, V0 = 30, m = 0.2, bf = 18 } = this.params;
+        const bClose = Math.max(5, 4 * Math.pow(this.v / 10, 2));
+        if (isOverallLeader || s > 200) return r * (V0 - this.v);
+        if (s < bClose) return -r * this.v;
+        return r * (V0 * (Math.tanh(m * (s - bf)) - Math.tanh(m * (bClose - bf))) - this.v);
+    }
+
     // ─── IDM ──────────────────────────────────────────────────────────────────
 
-    _stepIDM(dt, s, deltaV, isLeader) {
-        const { a = 1.5, b = 2.0, T = 1.5, v0 = 30, s0 = 2 } = this.params;
-
-        if (isLeader || s > 500) {
-            this.a = a * (1 - Math.pow(this.v / Math.max(v0, 0.01), 4));
-        } else {
-            const sStar = s0 + Math.max(0, this.v * T + this.v * deltaV / (2 * Math.sqrt(a * b)));
-            this.a = a * (1 - Math.pow(this.v / Math.max(v0, 0.01), 4) - Math.pow(sStar / Math.max(s, 0.1), 2));
-        }
-        this.a = Math.max(-10, Math.min(this.a, a));
+    _stepIDM(dt, s, leaderSpeed, isOverallLeader) {
+        this.a = this._idmAcc(s, leaderSpeed, isOverallLeader);
+        this.a = Math.max(-10, Math.min(this.a, this.params.a ?? 1.5));
         this.v = Math.max(0, this.v + this.a * dt);
         this.x += this.v * dt;
+    }
+
+    _idmAcc(s, leaderSpeed, isOverallLeader) {
+        const { a = 1.5, b = 2.0, T = 1.5, v0 = 30, s0 = 2 } = this.params;
+        if (isOverallLeader || s > 200) {
+            return a * (1 - Math.pow(this.v / Math.max(v0, 0.01), 4));
+        }
+        const deltaV = this.v - leaderSpeed;
+        const sStar = s0 + Math.max(0, this.v * T + this.v * deltaV / (2 * Math.sqrt(a * b)));
+        return a * (1 - Math.pow(this.v / Math.max(v0, 0.01), 4) - Math.pow(sStar / Math.max(s, 0.1), 2));
+    }
+
+    // ─── MOBIL: pure acceleration query (no state change) ─────────────────────
+
+    peekAcc(gap, leaderSpeed, isOverallLeader = false) {
+        return this.model === 'ovm'
+            ? this._ovmAcc(gap, isOverallLeader)
+            : this._idmAcc(gap, leaderSpeed, isOverallLeader);
     }
 }

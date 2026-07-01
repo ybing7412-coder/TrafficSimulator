@@ -4,7 +4,7 @@
  */
 export const ColorScale = {
     /** Traffic density [veh/m]: blue (free flow) → red (jam) */
-    density(rho, maxRho = 0.15) {
+    density(rho, maxRho = 0.5) {
         const t = Math.min(1, Math.max(0, rho / maxRho));
         return `rgb(${Math.round(35 + 220 * t)},${Math.round(55 + 120 * (1 - t))},${Math.round(210 - 160 * t)})`;
     },
