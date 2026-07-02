@@ -146,20 +146,53 @@ TrafficSimulator/
 
 ## Parameters
 
+### Simulation & numerics
+
 | Parameter | Symbol | Default | Description |
 |-----------|--------|---------|-------------|
-| Free-flow speed | Vmax | 30 m/s | Maximum vehicle speed |
-| Relaxation rate | α | 0.8 s⁻¹ | OVM response sensitivity |
+| Simulation time | T_max | 600 s | Total simulated duration |
+| Road length (per lane) | Lₓ | 2500 m | Ring circumference |
+| Spatial cell count | Nₓ | 200–500 | Macro grid resolution |
+| CFL number | — | 0.4 | Numerical stability factor |
+
+### Microscopic — OVM
+
+| Parameter | Symbol | Default | Description |
+|-----------|--------|---------|-------------|
+| Free-flow speed | V_f | 30 m/s | Maximum vehicle speed |
+| Sensitivity | α | 0.8 s⁻¹ | OVM response sensitivity |
 | Sharpness | m | 0.2 m⁻¹ | Velocity transition steepness |
 | Reference spacing | b_f | 18 m | OVM reference gap |
 | Vehicle length | ℓ | 4 m | — |
-| ARZ relaxation time | τ | 2 s | Macro relaxation toward equilibrium |
+
+### Microscopic — IDM
+
+| Parameter | Symbol | Default | Description |
+|-----------|--------|---------|-------------|
+| Desired speed | v₀ | 30 m/s | Free-road target speed |
+| Maximum acceleration | a_max | 1.5 m/s² | Comfortable acceleration |
+| Comfortable deceleration | b | 2 m/s² | Comfortable braking |
+| Headway time | T | 1.5 s | Safe time gap to leader |
+| Minimum gap | s₀ | 2 m | Bumper-to-bumper jam distance |
+
+### Macroscopic — ARZ
+
+| Parameter | Symbol | Default | Description |
+|-----------|--------|---------|-------------|
+| Relaxation time | τ | 2 s | Relaxation toward equilibrium velocity |
+| Jam density | ρ_max | 0.111 veh/m | Maximum (bumper-to-bumper) density |
+
+### Density estimation & initial profiles
+
+| Parameter | Symbol | Default | Description |
+|-----------|--------|---------|-------------|
 | KDE bandwidth | h | 20 m | Density smoothing scale |
-| Road length (one lane) | Lx | 2500 m | Circumference |
-| Spatial cells count | Nₓ | 200–500 | Macro grid resolution |
-| CFL number | — | 0.4 | Numerical stability factor |
-Simulation Time Tmax
-Jam density rhomax
+| Background density | ρ_bg | 0.005 (Gaussian) / 0.02 (sawtooth) veh/m | Baseline density floor |
+| Amplitude | A | 0.08 veh/m | Peak height above background (Gaussian & sawtooth) |
+| Peak position (Gaussian) | μ | 1250 m | Centre of the Gaussian hump |
+| Standard deviation (Gaussian) | σ | 300 m | Width of the Gaussian hump |
+| Number of waves (sawtooth) | N | — | Teeth per road length |
+| Phase offset (sawtooth) | φ | 0 | Spatial shift of the sawtooth pattern |
 
 ## References
 
