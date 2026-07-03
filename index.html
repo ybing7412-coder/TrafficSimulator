@@ -183,6 +183,25 @@
 
     </div>
 
+    <h2 class="section-title">Combined  —  micro + macro simultaneously</h2>
+
+    <div class="card-grid">
+        <a href="sims/combined/index.html" class="card">
+            <div class="card-tag">
+                <span class="tag micro">Micro</span>
+                <span class="tag macro">Macro</span>
+            </div>
+            <h3>Simultaneous Micro + Macro</h3>
+            <p>Runs an OVM or IDM car-following microsimulation alongside an LWR or ARZ
+               macroscopic partial differential equation solver in real-time lock-step.
+               Both models share the same initial condition (Gaussian, sawtooth, or flat)
+               and road configuration (ring road or straight road with open-boundary inflow).
+               Compare the density and speed profiles of individual vehicles against the
+               continuum PDE field on the same axes.</p>
+            <div class="math">micro: ẍ_n = f(Δx_n, ẋ_n, ẋ_{n+1})  ‖  macro: ∂ρ/∂t + ∂F/∂x = S</div>
+        </a>
+    </div>
+
     <h2 class="section-title">Microscopic Models  —  individual vehicles  ★ most interactive</h2>
 
     <div class="card-grid">

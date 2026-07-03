@@ -144,59 +144,69 @@
             </div>
         </div>
         <div id="gaussianPanel">
+            <p class="note">ρ₀(x) = ρ<sub>bg</sub> + A · exp(−(x − μ)² / 2σ²)</p>
             <div class="ctrl">
-                <label>Gaussian centre  μ  (m)</label>
+                <label>Background density  ρ<sub>bg</sub>  (veh/m)</label>
+                <div class="ctrl-row">
+                    <input type="range" id="bgSlider" min="0.001" max="0.050" step="0.001" value="0.005">
+                    <span class="val" id="bgVal">0.005 v/m</span>
+                </div>
+            </div>
+            <div class="ctrl">
+                <label>Amplitude  A  (veh/m)</label>
+                <div class="ctrl-row">
+                    <input type="range" id="ampSlider" min="0.005" max="0.130" step="0.005" value="0.080">
+                    <span class="val" id="ampVal">0.080 v/m</span>
+                </div>
+            </div>
+            <div class="ctrl">
+                <label>Peak position  μ  (m)</label>
                 <div class="ctrl-row">
                     <input type="range" id="muSlider" min="0" max="2500" step="25" value="1250">
                     <span class="val" id="muVal">1250 m</span>
                 </div>
             </div>
             <div class="ctrl">
-                <label>Gaussian width  σ  (m)</label>
+                <label>Std deviation  σ  (m)</label>
                 <div class="ctrl-row">
                     <input type="range" id="sigmaSlider" min="50" max="800" step="10" value="300">
                     <span class="val" id="sigmaVal">300 m</span>
                 </div>
             </div>
-            <div class="ctrl">
-                <label>Bump amplitude  (veh/m)</label>
-                <div class="ctrl-row">
-                    <input type="range" id="ampSlider" min="0.005" max="0.130" step="0.005" value="0.080">
-                    <span class="val" id="ampVal">0.080</span>
-                </div>
-            </div>
-            <div class="ctrl">
-                <label>Background density  (veh/m)</label>
-                <div class="ctrl-row">
-                    <input type="range" id="bgSlider" min="0.001" max="0.050" step="0.001" value="0.005">
-                    <span class="val" id="bgVal">0.005</span>
-                </div>
-            </div>
         </div>
         <div id="sawtoothPanel" style="display:none">
+            <p class="note">ρ₀(x) = ρ<sub>bg</sub> + A · frac((x − φ) · N / L)</p>
             <div class="ctrl">
-                <label>Background  ρ<sub>bg</sub>  (veh/m)</label>
+                <label>Background density  ρ<sub>bg</sub>  (veh/m)</label>
                 <div class="ctrl-row">
                     <input type="range" id="stBgSlider" min="0.001" max="0.200" step="0.001" value="0.020">
-                    <span class="val" id="stBgVal">0.020</span>
+                    <span class="val" id="stBgVal">0.020 v/m</span>
                 </div>
             </div>
             <div class="ctrl">
                 <label>Amplitude  A  (veh/m)</label>
                 <div class="ctrl-row">
                     <input type="range" id="stAmpSlider" min="0.005" max="0.200" step="0.005" value="0.080">
-                    <span class="val" id="stAmpVal">0.080</span>
+                    <span class="val" id="stAmpVal">0.080 v/m</span>
                 </div>
             </div>
             <div class="ctrl">
-                <label>Period  (m)</label>
+                <label>Number of waves  N</label>
                 <div class="ctrl-row">
-                    <input type="range" id="stPeriodSlider" min="100" max="2000" step="50" value="500">
-                    <span class="val" id="stPeriodVal">500 m</span>
+                    <input type="range" id="stNSlider" min="1" max="20" step="1" value="3">
+                    <span class="val" id="stNVal">3</span>
+                </div>
+            </div>
+            <div class="ctrl" style="opacity:0.65">
+                <label>Wavelength  λ = L / N</label>
+                <div class="ctrl-row" style="gap:8px">
+                    <span id="stWavelengthDisplay" style="font-size:12px;color:#ccc;font-variant-numeric:tabular-nums">— m</span>
+                    <span style="font-size:11px;color:#777">freq:</span>
+                    <span id="stFreqDisplay" style="font-size:12px;color:#ccc;font-variant-numeric:tabular-nums">— /km</span>
                 </div>
             </div>
             <div class="ctrl">
-                <label>Phase offset  (m)</label>
+                <label>Phase offset  φ  (m)</label>
                 <div class="ctrl-row">
                     <input type="range" id="stPhaseSlider" min="0" max="2000" step="25" value="0">
                     <span class="val" id="stPhaseVal">0 m</span>
@@ -254,11 +264,11 @@ const sliders = [
     ['gammaSlider',    'gammaVal',    v => `${parseFloat(v).toFixed(1)}`],
     ['muSlider',       'muVal',       v => `${+v} m`],
     ['sigmaSlider',    'sigmaVal',    v => `${+v} m`],
-    ['ampSlider',      'ampVal',      v => `${parseFloat(v).toFixed(3)}`],
-    ['bgSlider',       'bgVal',       v => `${parseFloat(v).toFixed(3)}`],
-    ['stBgSlider',     'stBgVal',     v => `${parseFloat(v).toFixed(3)}`],
-    ['stAmpSlider',    'stAmpVal',    v => `${parseFloat(v).toFixed(3)}`],
-    ['stPeriodSlider', 'stPeriodVal', v => `${+v} m`],
+    ['ampSlider',      'ampVal',      v => `${parseFloat(v).toFixed(3)} v/m`],
+    ['bgSlider',       'bgVal',       v => `${parseFloat(v).toFixed(3)} v/m`],
+    ['stBgSlider',     'stBgVal',     v => `${parseFloat(v).toFixed(3)} v/m`],
+    ['stAmpSlider',    'stAmpVal',    v => `${parseFloat(v).toFixed(3)} v/m`],
+    ['stNSlider',      'stNVal',      v => `${+v}`],
     ['stPhaseSlider',  'stPhaseVal',  v => `${+v} m`],
     ['rhoScaleSlider', 'rhoScaleVal', v => `${parseFloat(v).toFixed(3)}`],
     ['ttScaleSlider',  'ttScaleVal',  v => `${+v} s`],
@@ -278,6 +288,18 @@ document.getElementById('icType').addEventListener('change', e => {
     document.getElementById('gaussianPanel').style.display  = e.target.value === 'gaussian' ? '' : 'none';
     document.getElementById('sawtoothPanel').style.display  = e.target.value === 'sawtooth' ? '' : 'none';
 });
+
+function updateSawtoothDerived() {
+    const lx = getInt('lxSlider');
+    const N  = getInt('stNSlider');
+    const wl = lx / N;
+    const fr = (N / lx * 1000).toFixed(3);
+    document.getElementById('stWavelengthDisplay').textContent = `${wl.toFixed(1)} m`;
+    document.getElementById('stFreqDisplay').textContent       = `${fr} /km`;
+}
+updateSawtoothDerived();
+document.getElementById('stNSlider').addEventListener('input', updateSawtoothDerived);
+document.getElementById('lxSlider').addEventListener('input', updateSawtoothDerived);
 
 
 // ── Canvas management ────────────────────────────────────────────────────────
@@ -345,11 +367,12 @@ async function runSimulation() {
     } else {
         const stBg     = get('stBgSlider');
         const stAmp    = get('stAmpSlider');
-        const stPeriod = get('stPeriodSlider');
+        const stN      = getInt('stNSlider');
         const stPhase  = get('stPhaseSlider');
+        const stLambda = currentLx / stN;
         ic = x => {
-            const t = (((x - stPhase) % stPeriod) + stPeriod) % stPeriod;
-            return Math.max(0, stBg + stAmp * (t / stPeriod));
+            const frac = (((x - stPhase) % stLambda) + stLambda) % stLambda / stLambda;
+            return Math.max(0, stBg + stAmp * frac);
         };
     }
 

@@ -1,0 +1,1012 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>Combined Micro + Macro Traffic Simulator</title>
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: "Segoe UI", Arial, sans-serif; font-size: 14px; background: #111; color: #e0e0e0; height: 100vh; overflow: hidden; display: flex; flex-direction: column; }
+        .app-header { display: flex; align-items: center; gap: 16px; padding: 0 18px; height: 46px; background: #1c1c1c; border-bottom: 1px solid #2e2e2e; flex-shrink: 0; }
+        .app-header a { color: #5db8e8; text-decoration: none; font-size: 13px; }
+        .app-header h1 { font-size: 15px; font-weight: 600; color: #f4f4f4; }
+        .app-header .sub { font-size: 12px; color: #777; }
+        .layout { display: flex; flex: 1; overflow: hidden; }
+        .sidebar { width: 286px; flex-shrink: 0; background: #181818; border-right: 1px solid #2e2e2e; overflow-y: auto; display: flex; flex-direction: column; }
+        .sidebar section { padding: 13px 15px; border-bottom: 1px solid #242424; }
+        .sidebar h2 { font-size: 10px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: #b07aff; margin-bottom: 10px; }
+        .sidebar h2.macro-h { color: #5db8e8; }
+        .sidebar h2.micro-h { color: #7bff8a; }
+        .ctrl { margin-bottom: 9px; }
+        .ctrl:last-child { margin-bottom: 0; }
+        .ctrl label { display: block; font-size: 12px; color: #999; margin-bottom: 3px; }
+        .ctrl-row { display: flex; align-items: center; gap: 7px; }
+        input[type="range"] { flex: 1; accent-color: #b07aff; cursor: pointer; height: 14px; }
+        select { flex: 1; background: #222; color: #e0e0e0; border: 1px solid #3a3a3a; border-radius: 4px; padding: 4px 6px; font-size: 12px; }
+        .val { font-size: 11px; color: #e0e0e0; min-width: 76px; text-align: right; font-variant-numeric: tabular-nums; }
+        .btn { display: inline-flex; align-items: center; justify-content: center; gap: 5px; padding: 6px 12px; border: none; border-radius: 4px; font-size: 13px; font-family: inherit; cursor: pointer; transition: background 0.13s; }
+        .btn-primary { background: #4a2080; color: #fff; }
+        .btn-primary:hover { background: #6a40b0; }
+        .btn-secondary { background: #292929; color: #ddd; }
+        .btn-secondary:hover { background: #363636; }
+        .btn-row { display: flex; gap: 7px; flex-wrap: wrap; }
+        .note { font-size: 11px; color: #666; margin-bottom: 6px; font-style: italic; }
+        #timeDisplay { font-size: 12px; color: #999; margin-top: 5px; font-variant-numeric: tabular-nums; }
+        .viz-area { flex: 1; overflow: auto; display: flex; flex-direction: column; }
+        #hud { font-size: 11px; color: #8a9a95; font-family: "Consolas","Courier New",monospace; line-height: 1.55; padding: 6px 12px; background: #161616; border-bottom: 1px solid #222; flex-shrink: 0; white-space: pre; }
+        #canvases { padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; width: max-content; min-width: 100%; }
+        canvas { border: 1px solid #222; display: block; align-self: flex-start; }
+        .section-label { font-size: 10px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: #666; padding: 4px 0 2px; }
+        .derived-info { font-size: 11px; color: #888; margin-top: 3px; font-variant-numeric: tabular-nums; }
+        #sawtoothICPanel { display: none; }
+        #flatICPanel      { display: none; }
+        #arzPanel         { display: none; }
+        #inflowPanel      { display: none; }
+    </style>
+</head>
+<body>
+
+<div class="app-header">
+    <a href="../../index.html">← Home</a>
+    <h1>Combined Micro + Macro Simulator</h1>
+    <span class="sub">OVM / IDM  alongside  LWR / ARZ  ·  real-time lock-step</span>
+</div>
+
+<div class="layout">
+<div class="sidebar">
+
+    <section>
+        <h2>Simulation</h2>
+        <div class="ctrl">
+            <label>Road configuration</label>
+            <div class="ctrl-row">
+                <select id="roadTypeSelect">
+                    <option value="ring">Ring road</option>
+                    <option value="straight">Straight road</option>
+                </select>
+            </div>
+        </div>
+        <div class="ctrl">
+            <label>Road length  L  (m)</label>
+            <div class="ctrl-row">
+                <input type="range" id="lxSlider" min="500" max="5000" step="100" value="2000">
+                <span class="val" id="lxVal">2000 m</span>
+            </div>
+        </div>
+        <div class="ctrl">
+            <label>Macro spatial cells  Nx</label>
+            <div class="ctrl-row">
+                <input type="range" id="nxSlider" min="50" max="600" step="10" value="200">
+                <span class="val" id="nxVal">200</span>
+            </div>
+        </div>
+        <div class="ctrl">
+            <label>Playback speed</label>
+            <div class="ctrl-row">
+                <input type="range" id="speedSlider" min="0.25" max="8" step="0.25" value="1.0">
+                <span class="val" id="speedVal">1.0×</span>
+            </div>
+        </div>
+        <div class="btn-row" style="margin-top:8px">
+            <button class="btn btn-primary" id="restartBtn">▶ Restart</button>
+            <button class="btn btn-secondary" id="pauseBtn">⏸ Pause</button>
+        </div>
+        <div id="timeDisplay">t = 0.0 s</div>
+    </section>
+
+    <section>
+        <h2>Initial Conditions  <span style="font-weight:400;color:#666">(shared)</span></h2>
+        <div class="ctrl">
+            <label>IC type</label>
+            <div class="ctrl-row">
+                <select id="icType">
+                    <option value="gaussian">Gaussian bump</option>
+                    <option value="sawtooth">Sawtooth waves</option>
+                    <option value="flat">Flat / uniform</option>
+                </select>
+            </div>
+        </div>
+
+        <!-- Gaussian panel -->
+        <div id="gaussianICPanel">
+            <p class="note">ρ₀(x) = ρ_bg + A · exp(−(x−μ)²/2σ²)</p>
+            <div class="ctrl">
+                <label>Background  ρ_bg  (veh/m)</label>
+                <div class="ctrl-row">
+                    <input type="range" id="bgSlider" min="0.001" max="0.100" step="0.001" value="0.015">
+                    <span class="val" id="bgVal">0.015 v/m</span>
+                </div>
+            </div>
+            <div class="ctrl">
+                <label>Amplitude  A  (veh/m)</label>
+                <div class="ctrl-row">
+                    <input type="range" id="ampSlider" min="0.005" max="0.150" step="0.005" value="0.060">
+                    <span class="val" id="ampVal">0.060 v/m</span>
+                </div>
+            </div>
+            <div class="ctrl">
+                <label>Peak position  μ  (m)</label>
+                <div class="ctrl-row">
+                    <input type="range" id="muSlider" min="0" max="5000" step="25" value="500">
+                    <span class="val" id="muVal">500 m</span>
+                </div>
+            </div>
+            <div class="ctrl">
+                <label>Std deviation  σ  (m)</label>
+                <div class="ctrl-row">
+                    <input type="range" id="sigmaSlider" min="50" max="1000" step="10" value="250">
+                    <span class="val" id="sigmaVal">250 m</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Sawtooth panel -->
+        <div id="sawtoothICPanel">
+            <p class="note">ρ₀(x) = ρ_bg + A · frac((x−φ) · N / L)</p>
+            <div class="ctrl">
+                <label>Background  ρ_bg  (veh/m)</label>
+                <div class="ctrl-row">
+                    <input type="range" id="stBgSlider" min="0.001" max="0.150" step="0.001" value="0.015">
+                    <span class="val" id="stBgVal">0.015 v/m</span>
+                </div>
+            </div>
+            <div class="ctrl">
+                <label>Amplitude  A  (veh/m)</label>
+                <div class="ctrl-row">
+                    <input type="range" id="stAmpSlider" min="0.005" max="0.150" step="0.005" value="0.060">
+                    <span class="val" id="stAmpVal">0.060 v/m</span>
+                </div>
+            </div>
+            <div class="ctrl">
+                <label>Number of waves  N</label>
+                <div class="ctrl-row">
+                    <input type="range" id="stNSlider" min="1" max="20" step="1" value="4">
+                    <span class="val" id="stNVal">4</span>
+                </div>
+            </div>
+            <div class="derived-info" id="stDerivedInfo">λ = — m  ·  freq = — /km</div>
+            <div class="ctrl">
+                <label>Phase offset  φ  (m)</label>
+                <div class="ctrl-row">
+                    <input type="range" id="stPhaseSlider" min="0" max="2000" step="25" value="0">
+                    <span class="val" id="stPhaseVal">0 m</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Flat panel -->
+        <div id="flatICPanel">
+            <div class="ctrl">
+                <label>Uniform density  ρ₀  (veh/m)</label>
+                <div class="ctrl-row">
+                    <input type="range" id="flatRhoSlider" min="0.002" max="0.200" step="0.002" value="0.030">
+                    <span class="val" id="flatRhoVal">0.030 v/m</span>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section>
+        <h2 class="macro-h">Macro Model</h2>
+        <div class="ctrl">
+            <label>Model</label>
+            <div class="ctrl-row">
+                <select id="macroModel">
+                    <option value="lwr">LWR  (1st order)</option>
+                    <option value="arz">ARZ  (2nd order)</option>
+                </select>
+            </div>
+        </div>
+        <div class="ctrl">
+            <label>Free-flow speed  v<sub>f</sub>  (m/s)</label>
+            <div class="ctrl-row">
+                <input type="range" id="vfSlider" min="5" max="40" step="1" value="25">
+                <span class="val" id="vfVal">25 m/s</span>
+            </div>
+        </div>
+        <div class="ctrl">
+            <label>Jam density  ρ_max  (veh/m)</label>
+            <div class="ctrl-row">
+                <input type="range" id="rhoMaxSlider" min="0.10" max="0.50" step="0.01" value="0.20">
+                <span class="val" id="rhoMaxVal">0.200 v/m</span>
+            </div>
+        </div>
+        <div id="arzPanel">
+            <div class="ctrl">
+                <label>Relaxation time  τ  (s)</label>
+                <div class="ctrl-row">
+                    <input type="range" id="tauSlider" min="5" max="120" step="5" value="30">
+                    <span class="val" id="tauVal">30 s</span>
+                </div>
+            </div>
+            <div class="ctrl">
+                <label>Pressure exponent  γ</label>
+                <div class="ctrl-row">
+                    <input type="range" id="gammaSlider" min="0.5" max="3.0" step="0.1" value="1.0">
+                    <span class="val" id="gammaVal">1.0</span>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section>
+        <h2 class="micro-h">Micro Model</h2>
+        <div class="ctrl">
+            <label>Model</label>
+            <div class="ctrl-row">
+                <select id="microModel">
+                    <option value="ovm">OVM  (Optimal Velocity)</option>
+                    <option value="idm">IDM  (Intelligent Driver)</option>
+                </select>
+            </div>
+        </div>
+        <div id="ovmParams">
+            <div class="ctrl">
+                <label>Desired speed  v₀  (m/s)</label>
+                <div class="ctrl-row">
+                    <input type="range" id="ovmV0Slider" min="5" max="40" step="1" value="25">
+                    <span class="val" id="ovmV0Val">25 m/s</span>
+                </div>
+            </div>
+            <div class="ctrl">
+                <label>Sensitivity  r  (1/s)</label>
+                <div class="ctrl-row">
+                    <input type="range" id="ovmRSlider" min="0.1" max="2.0" step="0.1" value="0.8">
+                    <span class="val" id="ovmRVal">0.8</span>
+                </div>
+            </div>
+            <div class="ctrl">
+                <label>Shape  m  (1/m)</label>
+                <div class="ctrl-row">
+                    <input type="range" id="ovmMSlider" min="0.05" max="0.5" step="0.01" value="0.2">
+                    <span class="val" id="ovmMVal">0.20</span>
+                </div>
+            </div>
+            <div class="ctrl">
+                <label>Switchover gap  b<sub>f</sub>  (m)</label>
+                <div class="ctrl-row">
+                    <input type="range" id="ovmBfSlider" min="5" max="50" step="1" value="18">
+                    <span class="val" id="ovmBfVal">18 m</span>
+                </div>
+            </div>
+        </div>
+        <div id="idmParams" style="display:none">
+            <div class="ctrl">
+                <label>Desired speed  v₀  (m/s)</label>
+                <div class="ctrl-row">
+                    <input type="range" id="idmV0Slider" min="5" max="40" step="1" value="25">
+                    <span class="val" id="idmV0Val">25 m/s</span>
+                </div>
+            </div>
+            <div class="ctrl">
+                <label>Time headway  T  (s)</label>
+                <div class="ctrl-row">
+                    <input type="range" id="idmTSlider" min="0.5" max="4.0" step="0.1" value="1.5">
+                    <span class="val" id="idmTVal">1.5 s</span>
+                </div>
+            </div>
+            <div class="ctrl">
+                <label>Max acceleration  a_max  (m/s²)</label>
+                <div class="ctrl-row">
+                    <input type="range" id="idmASlider" min="0.5" max="4.0" step="0.1" value="1.5">
+                    <span class="val" id="idmAVal">1.5 m/s²</span>
+                </div>
+            </div>
+            <div class="ctrl">
+                <label>Comfortable deceleration  b  (m/s²)</label>
+                <div class="ctrl-row">
+                    <input type="range" id="idmBSlider" min="0.5" max="5.0" step="0.1" value="2.0">
+                    <span class="val" id="idmBVal">2.0 m/s²</span>
+                </div>
+            </div>
+            <div class="ctrl">
+                <label>Minimum gap  s₀  (m)</label>
+                <div class="ctrl-row">
+                    <input type="range" id="idmS0Slider" min="1" max="10" step="0.5" value="2">
+                    <span class="val" id="idmS0Val">2 m</span>
+                </div>
+            </div>
+        </div>
+        <div id="inflowSection">
+            <div class="ctrl" style="margin-top:6px">
+                <label style="display:flex;align-items:center;gap:6px;cursor:pointer;color:#e0e0e0;font-size:12px;margin-bottom:0">
+                    <input type="checkbox" id="inflowEnabled"> Open-boundary inflow
+                </label>
+            </div>
+            <div id="inflowPanel">
+                <div class="ctrl">
+                    <label>Inflow rate  (veh/s)</label>
+                    <div class="ctrl-row">
+                        <input type="range" id="inflowRateSlider" min="0.1" max="5" step="0.1" value="0.5">
+                        <span class="val" id="inflowRateVal">0.5 veh/s</span>
+                    </div>
+                </div>
+                <div class="ctrl">
+                    <label>Entry speed  (m/s)</label>
+                    <div class="ctrl-row">
+                        <input type="range" id="inflowSpeedSlider" min="1" max="35" step="1" value="15">
+                        <span class="val" id="inflowSpeedVal">15 m/s</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section>
+        <h2>Visualisation</h2>
+        <div class="ctrl">
+            <label>Density scale max  (veh/m)</label>
+            <div class="ctrl-row">
+                <input type="range" id="rhoScaleSlider" min="0.02" max="0.40" step="0.005" value="0.150">
+                <span class="val" id="rhoScaleVal">0.150 v/m</span>
+            </div>
+        </div>
+        <div class="ctrl">
+            <label>Travel time scale max  (s)</label>
+            <div class="ctrl-row">
+                <input type="range" id="ttScaleSlider" min="30" max="1200" step="10" value="300">
+                <span class="val" id="ttScaleVal">300 s</span>
+            </div>
+        </div>
+    </section>
+
+</div><!-- .sidebar -->
+
+<div class="viz-area">
+    <div id="hud">t = 0.0 s</div>
+    <div id="canvases"></div>
+</div>
+</div><!-- .layout -->
+
+<script type="module">
+import { Car }          from '../../src/micro/Car.js';
+import { ColorScale }   from '../../src/core/ColorScale.js';
+import { drawRoadBg, drawHeatmap, drawCar, drawLegend, drawLinePlot,
+         makeGeo, PX_PER_M, LANE_H, STRIPE_H, CAR_L_PX, CAR_W_PX }
+    from '../../src/core/Renderer.js';
+
+// ── Constants ──────────────────────────────────────────────────────────────────
+const CAR_L_M  = 4.5;
+const DT_FRAME = 0.10;   // sim seconds advanced per animation frame (before speed mult)
+const MAX_SUBSTEPS = 12; // max PDE substeps per frame
+
+// ── Slider wiring ──────────────────────────────────────────────────────────────
+const get    = id => parseFloat(document.getElementById(id).value);
+const getInt = id => parseInt(document.getElementById(id).value, 10);
+
+[   ['lxSlider',          'lxVal',          v => `${+v} m`],
+    ['nxSlider',          'nxVal',          v => `${+v}`],
+    ['speedSlider',       'speedVal',       v => `${parseFloat(v).toFixed(2)}×`],
+    ['bgSlider',          'bgVal',          v => `${parseFloat(v).toFixed(3)} v/m`],
+    ['ampSlider',         'ampVal',         v => `${parseFloat(v).toFixed(3)} v/m`],
+    ['muSlider',          'muVal',          v => `${+v} m`],
+    ['sigmaSlider',       'sigmaVal',       v => `${+v} m`],
+    ['stBgSlider',        'stBgVal',        v => `${parseFloat(v).toFixed(3)} v/m`],
+    ['stAmpSlider',       'stAmpVal',       v => `${parseFloat(v).toFixed(3)} v/m`],
+    ['stNSlider',         'stNVal',         v => `${+v}`],
+    ['stPhaseSlider',     'stPhaseVal',     v => `${+v} m`],
+    ['flatRhoSlider',     'flatRhoVal',     v => `${parseFloat(v).toFixed(3)} v/m`],
+    ['vfSlider',          'vfVal',          v => `${+v} m/s`],
+    ['rhoMaxSlider',      'rhoMaxVal',      v => `${parseFloat(v).toFixed(3)} v/m`],
+    ['tauSlider',         'tauVal',         v => `${+v} s`],
+    ['gammaSlider',       'gammaVal',       v => `${parseFloat(v).toFixed(1)}`],
+    ['ovmV0Slider',       'ovmV0Val',       v => `${+v} m/s`],
+    ['ovmRSlider',        'ovmRVal',        v => `${parseFloat(v).toFixed(1)}`],
+    ['ovmMSlider',        'ovmMVal',        v => `${parseFloat(v).toFixed(2)}`],
+    ['ovmBfSlider',       'ovmBfVal',       v => `${+v} m`],
+    ['idmV0Slider',       'idmV0Val',       v => `${+v} m/s`],
+    ['idmTSlider',        'idmTVal',        v => `${parseFloat(v).toFixed(1)} s`],
+    ['idmASlider',        'idmAVal',        v => `${parseFloat(v).toFixed(1)} m/s²`],
+    ['idmBSlider',        'idmBVal',        v => `${parseFloat(v).toFixed(1)} m/s²`],
+    ['idmS0Slider',       'idmS0Val',       v => `${parseFloat(v).toFixed(1)} m`],
+    ['inflowRateSlider',  'inflowRateVal',  v => `${parseFloat(v).toFixed(1)} veh/s`],
+    ['inflowSpeedSlider', 'inflowSpeedVal', v => `${+v} m/s`],
+    ['rhoScaleSlider',    'rhoScaleVal',    v => `${parseFloat(v).toFixed(3)} v/m`],
+    ['ttScaleSlider',     'ttScaleVal',     v => `${+v} s`],
+].forEach(([sid, lid, fmt]) => {
+    const el = document.getElementById(sid);
+    el.addEventListener('input', () => {
+        document.getElementById(lid).textContent = fmt(el.value);
+    });
+});
+
+function updateStDerived() {
+    const lx = get('lxSlider'), N = getInt('stNSlider');
+    const wl = (lx / N).toFixed(1);
+    const fr = (N / lx * 1000).toFixed(3);
+    document.getElementById('stDerivedInfo').textContent = `λ = ${wl} m  ·  freq = ${fr} /km`;
+}
+updateStDerived();
+document.getElementById('stNSlider').addEventListener('input', updateStDerived);
+document.getElementById('lxSlider').addEventListener('input', updateStDerived);
+
+document.getElementById('icType').addEventListener('change', e => {
+    const v = e.target.value;
+    document.getElementById('gaussianICPanel').style.display  = v === 'gaussian'  ? '' : 'none';
+    document.getElementById('sawtoothICPanel').style.display  = v === 'sawtooth'  ? '' : 'none';
+    document.getElementById('flatICPanel').style.display      = v === 'flat'      ? '' : 'none';
+});
+document.getElementById('macroModel').addEventListener('change', e => {
+    document.getElementById('arzPanel').style.display = e.target.value === 'arz' ? '' : 'none';
+});
+document.getElementById('microModel').addEventListener('change', e => {
+    document.getElementById('ovmParams').style.display  = e.target.value === 'ovm' ? '' : 'none';
+    document.getElementById('idmParams').style.display  = e.target.value === 'idm' ? '' : 'none';
+});
+document.getElementById('roadTypeSelect').addEventListener('change', e => {
+    const isStraight = e.target.value === 'straight';
+    document.getElementById('inflowSection').style.display = isStraight ? '' : 'none';
+});
+document.getElementById('inflowEnabled').addEventListener('change', e => {
+    document.getElementById('inflowPanel').style.display = e.target.checked ? '' : 'none';
+});
+
+// ── IC builder (shared by macro + micro) ────────────────────────────────────────
+function buildICFn(lx) {
+    const icType = document.getElementById('icType').value;
+    if (icType === 'gaussian') {
+        const bg = get('bgSlider'), amp = get('ampSlider');
+        const mu = get('muSlider'), sig = get('sigmaSlider');
+        return x => Math.max(0, bg + amp * Math.exp(-0.5 * ((x - mu) / sig) ** 2));
+    }
+    if (icType === 'sawtooth') {
+        const bg = get('stBgSlider'), amp = get('stAmpSlider');
+        const N  = getInt('stNSlider'), phi = get('stPhaseSlider');
+        const lambda = lx / N;
+        return x => {
+            const frac = (((x - phi) % lambda) + lambda) % lambda / lambda;
+            return Math.max(0, bg + amp * frac);
+        };
+    }
+    // flat
+    const rho0 = get('flatRhoSlider');
+    return () => rho0;
+}
+
+// ── Macro PDE stepper (LWR / ARZ, ring or straight) ────────────────────────────
+class MacroSim {
+    constructor(opts) {
+        Object.assign(this, opts);   // model, isRing, Nx, Lx, vMax, rhoMax, tau, gamma
+        this.dx  = this.Lx / this.Nx;
+        this.N   = this.isRing ? 2 * this.Nx : this.Nx;
+        this.rho = new Float64Array(this.N);
+        this.y   = new Float64Array(this.N);   // ARZ only
+        this.t   = 0;
+    }
+
+    // Physics helpers
+    _p(r)      { return this.vMax * Math.pow(Math.max(r, 1e-9) / this.rhoMax, this.gamma ?? 1); }
+    _ve(r)     { return this.vMax * Math.max(0, 1 - r / this.rhoMax); }   // LWR equil = Greenshields
+    _lwrV(r)   { return this._ve(r); }
+    _arzV(r,y) { return Math.max(0, Math.min(this.vMax, y / Math.max(r, 1e-9) - this._p(r))); }
+
+    init(icFn) {
+        const { Nx, dx, isRing, rhoMax } = this;
+        for (let i = 0; i < Nx; i++) {
+            const x = (i + 0.5) * dx;
+            const r = Math.max(0, Math.min(rhoMax * 0.99, icFn(x)));
+            this.rho[i] = r;
+            if (this.model === 'arz') {
+                this.y[i] = r * (this._arzV(r, r * (this._ve(r) + this._p(r))) + this._p(r));
+                // Simpler: start in equilibrium → y = ρ*(ve + p)
+                this.y[i] = r * (this._ve(r) + this._p(r));
+            }
+            if (isRing) {
+                this.rho[Nx + (Nx - 1 - i)] = r;
+                if (this.model === 'arz') this.y[Nx + (Nx - 1 - i)] = this.y[i];
+            }
+        }
+        this.t = 0;
+    }
+
+    step(DT, inflowRho) {
+        if (this.model === 'lwr') this._stepLWR(DT, inflowRho);
+        else                       this._stepARZ(DT, inflowRho);
+        this.t += DT;
+    }
+
+    _stepLWR(DT, inflowRho) {
+        const { N, dx, isRing, vMax } = this;
+        const dtCFL  = 0.9 * dx / vMax;
+        const nSub   = Math.min(MAX_SUBSTEPS, Math.max(1, Math.ceil(DT / dtCFL)));
+        const dts    = DT / nSub;
+        let rho = this.rho;
+        for (let s = 0; s < nSub; s++) {
+            const next = new Float64Array(N);
+            for (let i = 0; i < N; i++) {
+                const iL    = isRing ? (i - 1 + N) % N : Math.max(i - 1, 0);
+                const rhoL  = (i === 0 && !isRing) ? (inflowRho ?? rho[0]) : rho[iL];
+                const fL    = rhoL  * this._lwrV(rhoL);
+                const fC    = rho[i] * this._lwrV(rho[i]);
+                next[i] = Math.max(0, rho[i] - dts / dx * (fC - fL));
+            }
+            if (!isRing) {
+                next[0] = inflowRho ?? next[0]; // left Dirichlet BC
+                // right: copy (Neumann outflow)
+            }
+            rho = next;
+        }
+        this.rho = rho;
+    }
+
+    _stepARZ(DT, inflowRho) {
+        const { N, dx, isRing, vMax, rhoMax, tau } = this;
+        // Estimate max wave speed for CFL
+        let sMax = vMax;
+        for (let i = 0; i < N; i++) {
+            const v = this._arzV(this.rho[i], this.y[i]);
+            const c = this._p(this.rho[i]) * (this.gamma ?? 1);
+            sMax = Math.max(sMax, Math.abs(v) + c);
+        }
+        const dtCFL  = 0.4 * dx / Math.max(sMax, 0.01);
+        const nSub   = Math.min(MAX_SUBSTEPS, Math.max(1, Math.ceil(DT / dtCFL)));
+        const dts    = DT / nSub;
+        let rho = this.rho, y = this.y;
+
+        for (let s = 0; s < nSub; s++) {
+            const rN = new Float64Array(N), yN = new Float64Array(N);
+            for (let i = 0; i < N; i++) {
+                const iR  = isRing ? (i + 1) % N : Math.min(i + 1, N - 1);
+                const iL  = isRing ? (i - 1 + N) % N : Math.max(i - 1, 0);
+
+                const vC = this._arzV(rho[i],  y[i]);
+                const vR = this._arzV(rho[iR], y[iR]);
+                const vL = this._arzV(rho[iL], y[iL]);
+                const cC = this._p(rho[i])  * (this.gamma ?? 1);
+                const cR = this._p(rho[iR]) * (this.gamma ?? 1);
+                const cL = this._p(rho[iL]) * (this.gamma ?? 1);
+
+                // Rusanov at right interface
+                const sR = Math.max(Math.abs(vC) + cC, Math.abs(vR) + cR);
+                const frhoR = 0.5*(rho[i]*vC + rho[iR]*vR) - 0.5*sR*(rho[iR] - rho[i]);
+                const fyR   = 0.5*(y[i]*vC   + y[iR]*vR)   - 0.5*sR*(y[iR]   - y[i]);
+
+                // Rusanov at left interface
+                const sL = Math.max(Math.abs(vL) + cL, Math.abs(vC) + cC);
+                const frhoL = 0.5*(rho[iL]*vL + rho[i]*vC) - 0.5*sL*(rho[i]  - rho[iL]);
+                const fyL   = 0.5*(y[iL]*vL   + y[i]*vC)   - 0.5*sL*(y[i]    - y[iL]);
+
+                rN[i] = Math.max(0, rho[i] - dts/dx * (frhoR - frhoL));
+                yN[i] = y[i]             - dts/dx * (fyR   - fyL);
+
+                // Relaxation toward equilibrium
+                if (rN[i] > 1e-6) {
+                    const ve   = this._ve(rN[i]);
+                    const pN   = this._p(rN[i]);
+                    const vCur = this._arzV(rN[i], yN[i]);
+                    const vNew = vCur + (ve - vCur) * dts / tau;
+                    yN[i] = rN[i] * (Math.max(0, vNew) + pN);
+                }
+            }
+            // BCs for straight road
+            if (!isRing) {
+                const ri = inflowRho ?? rho[0];
+                rN[0] = ri;
+                yN[0] = ri * (this._ve(ri) + this._p(ri));
+            }
+            rho = rN; y = yN;
+        }
+        this.rho = rho; this.y = y;
+    }
+
+    // Accessors: returns arrays of length Nx (top lane only for ring)
+    topRho() { return Array.from(this.rho.subarray(0, this.Nx)); }
+    topV()   {
+        return Array.from({length: this.Nx}, (_, i) =>
+            this.model === 'lwr' ? this._lwrV(this.rho[i])
+                                 : this._arzV(this.rho[i], this.y[i]));
+    }
+    botRho() {
+        if (!this.isRing) return null;
+        // Ring bottom lane: cells Nx..2Nx-1 map x: Lx→0 (reversed for display)
+        return Array.from({length: this.Nx}, (_, i) => this.rho[this.Nx + i]).reverse();
+    }
+    botV() {
+        if (!this.isRing) return null;
+        return Array.from({length: this.Nx}, (_, i) =>
+            this.model === 'lwr' ? this._lwrV(this.rho[this.Nx + i])
+                                 : this._arzV(this.rho[this.Nx + i], this.y[this.Nx + i])
+        ).reverse();
+    }
+}
+
+// ── Micro: build car positions from IC density ──────────────────────────────────
+function buildMicroPositions(icFn, L, isRing) {
+    const STEPS    = 2000;
+    const dx       = L / STEPS;
+    const minHdwy  = CAR_L_M + 1;
+    let total = 0;
+    const rhoArr = new Float64Array(STEPS);
+    for (let i = 0; i < STEPS; i++) {
+        rhoArr[i] = Math.max(0, icFn((i + 0.5) * dx));
+        total    += rhoArr[i] * dx;
+    }
+    const N    = Math.max(3, Math.round(total));
+    const step = total / N;
+    const positions = [];
+    let cumul = 0, target = step * 0.5;
+    for (let i = 0; i < STEPS && positions.length < N; i++) {
+        cumul += rhoArr[i] * dx;
+        while (cumul >= target && positions.length < N) {
+            const x = (i + 0.5) * dx;
+            const prev = positions.length > 0 ? positions[positions.length - 1] : -Infinity;
+            if (x - prev >= minHdwy) positions.push(x);
+            target += step;
+        }
+    }
+    return positions;
+}
+
+function microParams() {
+    const model = document.getElementById('microModel').value;
+    if (model === 'ovm') return { model, params: { V0: get('ovmV0Slider'), r: get('ovmRSlider'), m: get('ovmMSlider'), bf: get('ovmBfSlider') } };
+    return { model, params: { v0: get('idmV0Slider'), T: get('idmTSlider'), a: get('idmASlider'), b: get('idmBSlider'), s0: get('idmS0Slider') } };
+}
+
+// ── Simulation state ───────────────────────────────────────────────────────────
+let macro     = null;
+let cars      = [];
+let inflowAcc = 0;
+let simTime   = 0;
+let isRing    = true;
+let lx        = 2000;
+let ringLen   = 4000;
+let geo       = makeGeo(1, 'ring');
+
+// ── Canvas handles ─────────────────────────────────────────────────────────────
+let cvRoad, cvMacroDensity, cvMicroDensity, cvMacroTT, cvMicroTT, cvDensityPlot, cvTravelTimePlot;
+
+const CV_PLOT_H  = 240;
+const CV_PLOT_W_FRAC = 5; // plot width = road canvas width / this
+
+function buildCanvases() {
+    const W  = Math.round(lx * PX_PER_M);
+    const Wp = Math.max(300, Math.round(W / CV_PLOT_W_FRAC));
+    const area = document.getElementById('canvases');
+    area.innerHTML = '';
+    const mk = (w, h) => { const c = document.createElement('canvas'); c.width=w; c.height=h; area.appendChild(c); return c; };
+    geo              = makeGeo(1, isRing ? 'ring' : 'straight');
+    cvRoad           = mk(W, geo.canvasH);
+    cvMacroDensity   = mk(W, geo.canvasH);
+    cvMicroDensity   = mk(W, geo.canvasH);
+    cvMacroTT        = mk(W, geo.canvasH);
+    cvMicroTT        = mk(W, geo.canvasH);
+    cvDensityPlot    = mk(Wp, CV_PLOT_H);
+    cvTravelTimePlot = mk(Wp, CV_PLOT_H);
+}
+
+// ── Micro density estimator  (headway-based, linearly interpolated) ─────────────
+function estimateMicro(Nx) {
+    const dx   = lx / Nx;
+    const minH = CAR_L_M + 1;
+    const L    = ringLen;
+
+    function lerpAt(smp, x, field) {
+        if (smp.length === 0) return 0;
+        if (x <= smp[0].x)             return smp[0][field];
+        const last = smp[smp.length - 1];
+        if (x >= last.x)               return last[field];
+        for (let i = 0; i < smp.length - 1; i++) {
+            if (x >= smp[i].x && x <= smp[i + 1].x) {
+                const w = (x - smp[i].x) / (smp[i + 1].x - smp[i].x);
+                return smp[i][field] * (1 - w) + smp[i + 1][field] * w;
+            }
+        }
+        return last[field];
+    }
+
+    const topRho = new Float32Array(Nx);
+    const topSpd = new Float32Array(Nx);
+
+    // Add tight sentinel zeros just outside the car cluster so lerpAt returns 0 in empty regions
+    function addSentinels(smp, roadLen) {
+        if (!smp.length) { smp.push({ x: 0, rho: 0, v: 0 }, { x: roadLen, rho: 0, v: 0 }); return; }
+        smp.sort((a, b) => a.x - b.x);
+        smp.unshift({ x: Math.max(0, smp[0].x - minH),          rho: 0, v: 0 });
+        smp.push(   { x: Math.min(roadLen, smp[smp.length-1].x + minH), rho: 0, v: 0 });
+    }
+
+    if (!isRing) {
+        // Straight road: open-boundary headways
+        const sorted = cars.slice().sort((a, b) => a.x - b.x);
+        const N = sorted.length;
+        const smp = N === 0
+            ? []
+            : sorted.map((c, i) => {
+                const hdwy = i < N - 1
+                    ? Math.max(sorted[i + 1].x - c.x, minH)
+                    : Math.max(lx - c.x, minH);
+                return { x: c.x, rho: 1 / hdwy, v: c.v };
+              });
+        addSentinels(smp, lx);
+        for (let i = 0; i < Nx; i++) {
+            topRho[i] = lerpAt(smp, (i + 0.5) * dx, 'rho');
+            topSpd[i] = lerpAt(smp, (i + 0.5) * dx, 'v');
+        }
+        return { topRho: [topRho], topSpd: [topSpd], botRho: null, botSpd: null };
+    }
+
+    // Ring road: compute headways on the full ring, then split top/bottom
+    const sorted = cars.slice().sort((a, b) => a.x - b.x);
+    const N = sorted.length;
+    if (N === 0) {
+        topRho.fill(0); topSpd.fill(0);
+        const botRho = new Float32Array(Nx); botRho.fill(0);
+        const botSpd = new Float32Array(Nx); botSpd.fill(0);
+        return { topRho: [topRho], topSpd: [topSpd], botRho: [botRho], botSpd: [botSpd] };
+    }
+
+    // Build ring samples with wrap-around headways
+    const topSmp = [], botSmp = [];
+    for (let i = 0; i < N; i++) {
+        const c    = sorted[i];
+        const next = sorted[(i + 1) % N];
+        const hdwy = Math.max(((next.x - c.x) % L + L) % L, minH);
+        const rho  = 1 / hdwy;
+        const s    = ((c.x % L) + L) % L;
+        if (s < lx) {
+            topSmp.push({ x: s, rho, v: c.v });
+        } else {
+            botSmp.push({ x: L - s, rho, v: c.v });
+        }
+    }
+    // Tight sentinels clamp density to 0 in road sections with no cars
+    addSentinels(topSmp, lx);
+    addSentinels(botSmp, lx);
+
+    const botRho = new Float32Array(Nx);
+    const botSpd = new Float32Array(Nx);
+    for (let i = 0; i < Nx; i++) {
+        topRho[i] = lerpAt(topSmp, (i + 0.5) * dx, 'rho');
+        topSpd[i] = lerpAt(topSmp, (i + 0.5) * dx, 'v');
+        // drawHeatmap draws bottom right-to-left: index 0 = left screen edge = high ring x
+        botRho[i] = lerpAt(botSmp, lx - (i + 0.5) * dx, 'rho');
+        botSpd[i] = lerpAt(botSmp, lx - (i + 0.5) * dx, 'v');
+    }
+
+    return { topRho: [topRho], topSpd: [topSpd], botRho: [botRho], botSpd: [botSpd] };
+}
+
+// ── Travel time: backward integration of 1/v(x) from each cell to road end ──────
+function computeTT(vArr, dx) {
+    const N = vArr.length;
+    const T = new Float64Array(N);
+    T[N - 1] = dx / Math.max(vArr[N - 1], 0.5);
+    for (let i = N - 2; i >= 0; i--) {
+        T[i] = T[i + 1] + dx / Math.max(vArr[i], 0.5);
+    }
+    return Array.from(T);
+}
+
+// ── Restart ────────────────────────────────────────────────────────────────────
+function restart() {
+    lx      = get('lxSlider');
+    isRing  = document.getElementById('roadTypeSelect').value === 'ring';
+    ringLen = isRing ? 2 * lx : lx;
+    simTime = 0;
+    inflowAcc = 0;
+
+    buildCanvases();
+
+    const icFn = buildICFn(lx);
+
+    // Init macro
+    macro = new MacroSim({
+        model:  document.getElementById('macroModel').value,
+        isRing,
+        Nx:     getInt('nxSlider'),
+        Lx:     lx,
+        vMax:   get('vfSlider'),
+        rhoMax: get('rhoMaxSlider'),
+        tau:    get('tauSlider'),
+        gamma:  get('gammaSlider'),
+    });
+    macro.init(icFn);
+
+    // Init micro
+    const { model, params } = microParams();
+    cars = [];
+    const positions = buildMicroPositions(icFn, lx, isRing);
+    for (let i = 0; i < positions.length; i++) {
+        const car = new Car({ id: i, x: positions[i], v: macro._ve(icFn(positions[i])), color: '#1a5fa8', model, params });
+        car.lane = 0;
+        cars.push(car);
+    }
+}
+
+// ── Micro step ─────────────────────────────────────────────────────────────────
+function stepMicro(DT) {
+    const { model, params } = microParams();
+    const L = ringLen;
+
+    // Sort by position
+    const sorted = cars.slice().sort((a, b) => a.x - b.x);
+
+    for (let i = 0; i < sorted.length; i++) {
+        const car = sorted[i];
+        car.model  = model;
+        car.params = params;
+
+        let gap, leaderV, isLeader = false;
+        const next = sorted[(i + 1) % sorted.length];
+
+        if (isRing) {
+            gap     = ((next.x - car.x - CAR_L_M) % L + L) % L;
+            leaderV = next.v;
+            if (sorted.length <= 1) { gap = 999; isLeader = true; }
+        } else {
+            if (i === sorted.length - 1) {
+                gap = 999; leaderV = car.v; isLeader = true;
+            } else {
+                gap     = Math.max(0, next.x - car.x - CAR_L_M);
+                leaderV = next.v;
+            }
+        }
+
+        car.step(DT, gap, leaderV, isLeader);
+        if (isRing) car.x = ((car.x % L) + L) % L;
+    }
+
+    // Open boundary: remove exited, add inflow
+    if (!isRing) {
+        for (let i = cars.length - 1; i >= 0; i--) {
+            if (cars[i].x >= lx) cars.splice(i, 1);
+        }
+        if (document.getElementById('inflowEnabled').checked) {
+            inflowAcc += get('inflowRateSlider') * DT;
+            while (inflowAcc >= 1) {
+                const minX = cars.length > 0 ? Math.min(...cars.map(c => c.x)) : Infinity;
+                if (minX > CAR_L_M + 2) {
+                    const { model: m, params: p } = microParams();
+                    const spd = get('inflowSpeedSlider');
+                    const nc  = new Car({ id: Date.now() + cars.length, x: 0, v: spd, color: '#1a5fa8', model: m, params: p });
+                    nc.lane = 0;
+                    cars.push(nc);
+                }
+                inflowAcc--;
+            }
+        }
+    }
+}
+
+// ── Render ─────────────────────────────────────────────────────────────────────
+function render() {
+    const rhoScale  = get('rhoScaleSlider');
+    const ttScale   = get('ttScaleSlider');
+    const Nx        = getInt('nxSlider');
+    const rhoCFn    = v => ColorScale.density(v, rhoScale);
+    const ttCFn     = v => ColorScale.travelTime(v, ttScale);
+    const spdCFn    = v => ColorScale.speed(v, 30);
+    const { legendY } = geo;
+    const dx        = lx / Nx;
+
+    const macroTopRho = macro.topRho();
+    const macroTopV   = macro.topV();
+    const macroBotRho = macro.botRho();
+    const macroBotV   = macro.botV();
+
+    const microEst    = estimateMicro(Nx);
+
+    // Travel time: backward sweep of 1/v(x) from each cell to road end
+    const macroTopTT  = computeTT(macroTopV, dx);
+    const macroBotTT  = macroBotV ? computeTT(macroBotV, dx) : null;
+    const microTopTT  = computeTT(Array.from(microEst.topSpd[0]), dx);
+    const microBotTT  = microEst.botSpd ? computeTT(Array.from(microEst.botSpd[0]), dx) : null;
+
+    const macroName = document.getElementById('macroModel').value.toUpperCase();
+    const microName = document.getElementById('microModel').value.toUpperCase();
+
+    // ── Micro car view ──────────────────────────────────────────────────────────
+    { const ctx = cvRoad.getContext('2d');
+      drawRoadBg(ctx, cvRoad, `${microName}  —  Car Positions`, geo);
+      const sorted = cars.slice().sort((a, b) => a.x - b.x);
+      for (const car of sorted) {
+          const s      = ((car.x % ringLen) + ringLen) % ringLen;
+          const onTop  = !isRing || s < lx;
+          const screenX = onTop ? s : (ringLen - s);
+          const cy_    = onTop ? geo.topLaneY[0] : geo.botLaneY[0];
+          ctx.save();
+          ctx.translate(screenX * PX_PER_M, cy_);
+          drawCar(ctx, 0, 0, CAR_L_PX, CAR_W_PX, onTop, spdCFn(car.v));
+          ctx.restore();
+      }
+      drawLegend(ctx, 30, legendY, 240, 13, 'Speed (m/s)', '0', '30', spdCFn, 0, 30); }
+
+    // ── Macro density heatmap ───────────────────────────────────────────────────
+    { const ctx = cvMacroDensity.getContext('2d');
+      drawRoadBg(ctx, cvMacroDensity, `${macroName}  —  Density  ρ(x,t)`, geo);
+      drawHeatmap(ctx, [macroTopRho], macroBotRho ? [macroBotRho] : null, rhoCFn, geo, PX_PER_M, lx);
+      drawLegend(ctx, 30, legendY, 240, 13, 'ρ (veh/m)', '0', `${rhoScale.toFixed(3)}`, rhoCFn, 0, rhoScale); }
+
+    // ── Micro density estimate heatmap ──────────────────────────────────────────
+    { const ctx = cvMicroDensity.getContext('2d');
+      drawRoadBg(ctx, cvMicroDensity, `${microName}  —  Density estimate  ρ̂(x,t)`, geo);
+      drawHeatmap(ctx, microEst.topRho, microEst.botRho, rhoCFn, geo, PX_PER_M, lx);
+      drawLegend(ctx, 30, legendY, 240, 13, 'ρ̂ (veh/m)', '0', `${rhoScale.toFixed(3)}`, rhoCFn, 0, rhoScale); }
+
+    // ── Macro travel time heatmap ───────────────────────────────────────────────
+    { const ctx = cvMacroTT.getContext('2d');
+      drawRoadBg(ctx, cvMacroTT, `${macroName}  —  Travel Time  T(x,t)`, geo);
+      drawHeatmap(ctx, [macroTopTT], macroBotTT ? [macroBotTT] : null, ttCFn, geo, PX_PER_M, lx);
+      drawLegend(ctx, 30, legendY, 240, 13, 'T (s)', '0', `${ttScale}`, ttCFn, 0, ttScale); }
+
+    // ── Micro travel time heatmap ───────────────────────────────────────────────
+    { const ctx = cvMicroTT.getContext('2d');
+      drawRoadBg(ctx, cvMicroTT, `${microName}  —  Travel Time estimate  T̂(x,t)`, geo);
+      drawHeatmap(ctx, [microTopTT], microBotTT ? [microBotTT] : null, ttCFn, geo, PX_PER_M, lx);
+      drawLegend(ctx, 30, legendY, 240, 13, 'T̂ (s)', '0', `${ttScale}`, ttCFn, 0, ttScale); }
+
+    // ── Density line plot  (macro + micro) ──────────────────────────────────────
+    { const ctx = cvDensityPlot.getContext('2d');
+      const datasets = [
+          { label: `${macroName} ρ`, color: '#5db8e8', values: macroTopRho },
+          { label: `${microName} ρ̂`, color: '#ffb347', values: Array.from(microEst.topRho[0]) },
+      ];
+      if (isRing && macroBotRho) {
+          datasets.push({ label: `${macroName} ρ (bot)`, color: '#3a7aaa', values: macroBotRho });
+          datasets.push({ label: `${microName} ρ̂ (bot)`, color: '#cc8833', values: Array.from(microEst.botRho?.[0] ?? []) });
+      }
+      drawLinePlot(ctx, cvDensityPlot, 'Density Profile  ρ(x,t)', 'ρ (veh/m)', 0, rhoScale, lx, datasets); }
+
+    // ── Travel time line plot  (macro + micro) ──────────────────────────────────
+    { const ctx = cvTravelTimePlot.getContext('2d');
+      const datasets = [
+          { label: `${macroName} T`, color: '#7bff8a', values: macroTopTT },
+          { label: `${microName} T̂`, color: '#ff6b9d', values: microTopTT },
+      ];
+      if (isRing && macroBotTT) {
+          datasets.push({ label: `${macroName} T (bot)`, color: '#4aaa60', values: macroBotTT });
+          datasets.push({ label: `${microName} T̂ (bot)`, color: '#cc3366', values: microBotTT ?? [] });
+      }
+      drawLinePlot(ctx, cvTravelTimePlot, 'Travel Time Profile  T(x,t)', 'T (s)', 0, ttScale, lx, datasets); }
+
+    document.getElementById('hud').textContent =
+        `t = ${simTime.toFixed(1)} s   ·   cars = ${cars.length}   ·   macro cells = ${macro.N}   ·   ${macroName} + ${microName}`;
+}
+
+// ── Animation loop ─────────────────────────────────────────────────────────────
+let playing    = true;
+let lastTs     = null;
+let accumulated = 0;
+
+function frame(ts) {
+    if (!playing) { lastTs = null; requestAnimationFrame(frame); return; }
+    if (lastTs === null) { lastTs = ts; requestAnimationFrame(frame); return; }
+
+    const wallDt  = (ts - lastTs) / 1000;
+    lastTs        = ts;
+    const speed   = get('speedSlider');
+    accumulated  += wallDt * speed;
+
+    const maxAccum = DT_FRAME * 6;
+    if (accumulated > maxAccum) accumulated = maxAccum;
+
+    while (accumulated >= DT_FRAME) {
+        macro.step(DT_FRAME, get('flatRhoSlider'));
+        stepMicro(DT_FRAME);
+        simTime   += DT_FRAME;
+        accumulated -= DT_FRAME;
+    }
+
+    render();
+    document.getElementById('timeDisplay').textContent = `t = ${simTime.toFixed(1)} s`;
+    requestAnimationFrame(frame);
+}
+
+// ── Buttons ────────────────────────────────────────────────────────────────────
+document.getElementById('restartBtn').addEventListener('click', () => {
+    playing = true;
+    lastTs  = null;
+    accumulated = 0;
+    restart();
+});
+document.getElementById('pauseBtn').addEventListener('click', () => {
+    playing = !playing;
+    document.getElementById('pauseBtn').textContent = playing ? '⏸ Pause' : '▶ Resume';
+});
+
+// ── Boot ────────────────────────────────────────────────────────────────────────
+restart();
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
